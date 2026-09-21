@@ -4,7 +4,7 @@ import { useWallet } from '../hooks/useWallet';
 import { useRoles } from '../hooks/useRoles';
 import { useRouter } from '../hooks/useRouter';
 import { Badge } from '../components/common/Badge';
-import { formatChainName } from '../utils/formatters';
+import { formatChainName, shortenAddress } from '../utils/formatters';
 
 export function Header() {
   const { isConnected, networkName, chainId, switchToTargetNetwork, diagnostics } = useWallet();
@@ -15,7 +15,7 @@ export function Header() {
   const [switchError, setSwitchError] = useState(null);
   const [showDevDetails, setShowDevDetails] = useState(false);
 
-  const targetNetworkName = targetChainId ? formatChainName(targetChainId) : 'Target Network';
+  const targetNetworkName = targetChainId ? formatChainName(targetChainId) : 'Ethereum Sepolia';
 
   const activeDashboardRoute = currentRole && ROLE_METADATA[currentRole]
     ? ROLE_METADATA[currentRole].dashboardRoute
@@ -25,7 +25,7 @@ export function Header() {
     setIsSwitching(true);
     setSwitchError(null);
     try {
-      await switchToTargetNetwork(targetChainId);
+      await switchToTargetNetwork(targetChainId || 11155111);
     } catch (err) {
       setSwitchError(err?.message || 'Failed to switch network.');
     } finally {
@@ -35,12 +35,53 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs">
+      {/* Required System Environment Status Bar */}
+      <div className="bg-slate-950 text-slate-300 text-xs px-4 py-1.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 font-mono">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-slate-400">Environment:</span>
+            <strong className="text-slate-100">Ethereum Sepolia Testnet</strong>
+          </div>
+          <div className="hidden xs:block text-slate-600">•</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Blockchain:</span>
+            <strong className="text-cyan-300">{formatChainName(chainId || targetChainId || 11155111)}</strong>
+          </div>
+          <div className="hidden xs:block text-slate-600">•</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Chain ID:</span>
+            <strong className="text-yellow-300">{chainId || targetChainId || 11155111}</strong>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Wallet:</span>
+            {isConnected && diagnostics?.address ? (
+              <span className="text-emerald-400 font-semibold">{shortenAddress(diagnostics.address)} (Connected)</span>
+            ) : isConnected ? (
+              <span className="text-emerald-400 font-semibold">Connected</span>
+            ) : (
+              <span className="text-amber-400 font-semibold">Disconnected</span>
+            )}
+          </div>
+          <button
+            onClick={() => navigate('/debug/blockchain')}
+            type="button"
+            className="text-slate-400 hover:text-white underline text-[11px] cursor-pointer"
+          >
+            Diagnostics
+          </button>
+        </div>
+      </div>
+
       {/* Network mismatch alert bar if connected to unsupported network */}
-      {isConnected && !isSupportedNetwork && targetChainId && (
+      {isConnected && !isSupportedNetwork && (
         <div className="bg-amber-500 text-slate-900 px-4 py-2 text-center text-xs font-semibold flex flex-wrap items-center justify-center gap-3 shadow-xs">
           <div className="flex items-center gap-1.5">
             <span>⚠️ Unsupported Network:</span>
-            <span>Please switch your wallet to Chain ID {targetChainId}. Current network: {networkName || 'Unknown'} (Chain ID: {chainId || 'None'}).</span>
+            <span>Please switch your wallet to Ethereum Sepolia (Chain ID 11155111). Current network: {networkName || 'Unknown'} (Chain ID: {chainId || 'None'}).</span>
           </div>
           <button
             onClick={handleSwitchNetwork}
@@ -145,6 +186,18 @@ export function Header() {
               }`}
             >
               Verify On-Chain
+            </button>
+
+            <button
+              onClick={() => navigate('/debug/blockchain')}
+              type="button"
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                currentRoute.startsWith('/debug/blockchain')
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Diagnostics
             </button>
 
             {isConnected && activeRoles.length > 0 && (

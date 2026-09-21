@@ -1,5 +1,5 @@
 /**
- * Utility formatters for addresses, chains, and timestamps.
+ * Utility formatters for addresses, chains, timestamps, and explorer links.
  */
 
 /**
@@ -46,23 +46,18 @@ export function formatChainName(chainId) {
   if (id === null) return 'Unknown Network';
 
   switch (id) {
+    case 11155111:
+      return 'Ethereum Sepolia';
     case 1:
       return 'Ethereum Mainnet';
-    case 11155111:
-      return 'Sepolia Testnet';
     case 17000:
       return 'Holesky Testnet';
-    case 1337:
-    case 5777:
-      return 'Ganache Local';
-    case 31337:
-      return 'Hardhat Local';
-    case 5:
-      return 'Goerli Testnet (Deprecated)';
     case 137:
       return 'Polygon Mainnet';
     case 80002:
       return 'Polygon Amoy Testnet';
+    case 421614:
+      return 'Arbitrum Sepolia';
     default:
       return `Chain ID: ${id}`;
   }
@@ -89,28 +84,67 @@ export function formatTimestamp(timestamp) {
 }
 
 /**
- * Returns the public block explorer transaction URL if chain is recognized, or null.
- * @param {number|string} chainId
- * @param {string} txHash
- * @returns {string | null}
+ * Returns the public block explorer transaction URL.
+ * Supports either (txHash) defaulting to Sepolia, or (chainId, txHash).
+ * @param {number|string} chainIdOrTxHash
+ * @param {string} [maybeTxHash]
+ * @returns {string}
  */
-export function getExplorerTxUrl(chainId, txHash) {
-  if (!chainId || !txHash) return null;
-  const id = Number(chainId);
+export function getExplorerTxUrl(chainIdOrTxHash, maybeTxHash) {
+  let chainId = 11155111;
+  let txHash = chainIdOrTxHash;
 
-  switch (id) {
+  if (maybeTxHash) {
+    chainId = Number(chainIdOrTxHash) || 11155111;
+    txHash = maybeTxHash;
+  }
+
+  if (!txHash) return '';
+
+  switch (Number(chainId)) {
     case 1:
       return `https://etherscan.io/tx/${txHash}`;
-    case 11155111:
-      return `https://sepolia.etherscan.io/tx/${txHash}`;
     case 17000:
       return `https://holesky.etherscan.io/tx/${txHash}`;
     case 137:
       return `https://polygonscan.com/tx/${txHash}`;
     case 80002:
       return `https://amoy.polygonscan.com/tx/${txHash}`;
+    case 11155111:
     default:
-      return null;
+      return `https://sepolia.etherscan.io/tx/${txHash}`;
   }
 }
 
+/**
+ * Returns the public block explorer address URL.
+ * Supports either (address) defaulting to Sepolia, or (chainId, address).
+ * @param {number|string} chainIdOrAddress
+ * @param {string} [maybeAddress]
+ * @returns {string}
+ */
+export function getExplorerAddressUrl(chainIdOrAddress, maybeAddress) {
+  let chainId = 11155111;
+  let address = chainIdOrAddress;
+
+  if (maybeAddress) {
+    chainId = Number(chainIdOrAddress) || 11155111;
+    address = maybeAddress;
+  }
+
+  if (!address) return '';
+
+  switch (Number(chainId)) {
+    case 1:
+      return `https://etherscan.io/address/${address}`;
+    case 17000:
+      return `https://holesky.etherscan.io/address/${address}`;
+    case 137:
+      return `https://polygonscan.com/address/${address}`;
+    case 80002:
+      return `https://amoy.polygonscan.com/address/${address}`;
+    case 11155111:
+    default:
+      return `https://sepolia.etherscan.io/address/${address}`;
+  }
+}

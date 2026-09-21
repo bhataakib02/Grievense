@@ -18,6 +18,17 @@
         "type": "uint256"
       }
     ],
+    "name": "CategoryAlreadyActive",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      }
+    ],
     "name": "CategoryNotActive",
     "type": "error"
   },
@@ -30,6 +41,28 @@
       }
     ],
     "name": "CategoryNotFound",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "DepartmentAdminNotAssigned",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "DepartmentAlreadyActive",
     "type": "error"
   },
   {
@@ -225,6 +258,31 @@
         "type": "uint256"
       },
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "reactivatedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "name": "CategoryReactivated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      },
+      {
         "indexed": false,
         "internalType": "string",
         "name": "newName",
@@ -275,6 +333,37 @@
       }
     ],
     "name": "DepartmentAdminChanged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousAdmin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "removedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "name": "DepartmentAdminRemoved",
     "type": "event"
   },
   {
@@ -349,6 +438,31 @@
         "type": "uint256"
       },
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "reactivatedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "name": "DepartmentReactivated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      },
+      {
         "indexed": false,
         "internalType": "string",
         "name": "newName",
@@ -406,6 +520,43 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "officer",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "fromDepartmentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "toDepartmentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "transferredBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "name": "OfficerDepartmentTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "uint256",
         "name": "departmentId",
         "type": "uint256"
@@ -431,6 +582,32 @@
     ],
     "name": "OfficerRemovedFromDepartment",
     "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      }
+    ],
+    "name": "activateCategory",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "activateDepartment",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
     "inputs": [
@@ -570,6 +747,25 @@
         "internalType": "bool",
         "name": "",
         "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      }
+    ],
+    "name": "getAdminDepartments",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
       }
     ],
     "stateMutability": "view",
@@ -744,6 +940,25 @@
         "type": "address"
       }
     ],
+    "name": "getOfficerDepartment",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "officer",
+        "type": "address"
+      }
+    ],
     "name": "getOfficerDepartments",
     "outputs": [
       {
@@ -802,6 +1017,49 @@
       },
       {
         "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "isDepartmentAdminFor",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "officer",
+        "type": "address"
+      }
+    ],
+    "name": "isOfficerActive",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
         "name": "officer",
         "type": "address"
       }
@@ -815,6 +1073,45 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      }
+    ],
+    "name": "reactivateCategory",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "reactivateDepartment",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "removeDepartmentAdmin",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -875,6 +1172,29 @@
       }
     ],
     "name": "setDepartmentAdmin",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "officer",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "fromDepartmentId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "toDepartmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferOfficerDepartment",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

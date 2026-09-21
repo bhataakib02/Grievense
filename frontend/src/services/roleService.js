@@ -149,7 +149,7 @@ export async function fetchUserRoles(runner, accountAddress) {
   if (isSuperAdmin) activeRoles.push(ROLES.SUPER_ADMIN);
   if (isDeptAdmin) activeRoles.push(ROLES.DEPARTMENT_ADMIN);
   if (isOfficer) activeRoles.push(ROLES.OFFICER);
-  if (isCitizen) activeRoles.push(ROLES.CITIZEN);
+  if (isCitizen || activeRoles.length === 0) activeRoles.push(ROLES.CITIZEN);
 
   // Determine highest priority role
   const highestRole = ROLE_HIERARCHY.find((r) => activeRoles.includes(r)) || null;

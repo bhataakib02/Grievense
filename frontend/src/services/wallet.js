@@ -87,31 +87,24 @@ export function getChainConfig(chainId) {
   const hexChainId = '0x' + numericId.toString(16);
 
   // Check if configured via environment variables for custom chains/RPC
-  const envTargetChain = typeof import.meta !== 'undefined' && import.meta.env?.VITE_TARGET_CHAIN_ID
-    ? parseInt(import.meta.env.VITE_TARGET_CHAIN_ID, 10)
-    : null;
+  const envTargetChain = typeof import.meta !== 'undefined' && (import.meta.env?.VITE_TARGET_CHAIN_ID || import.meta.env?.VITE_CHAIN_ID)
+    ? parseInt(import.meta.env.VITE_TARGET_CHAIN_ID || import.meta.env.VITE_CHAIN_ID, 10)
+    : 11155111;
   const envRpcUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_RPC_URL
     ? import.meta.env.VITE_RPC_URL
-    : null;
+    : 'https://rpc.sepolia.org';
 
-  if (envTargetChain && numericId === envTargetChain && envRpcUrl) {
+  if (numericId === 11155111 || (envTargetChain && numericId === envTargetChain)) {
     return {
-      chainId: hexChainId,
-      chainName: `Target Network (${numericId})`,
-      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-      rpcUrls: [envRpcUrl],
+      chainId: '0xaa36a7',
+      chainName: 'Sepolia Testnet',
+      nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
+      rpcUrls: [envRpcUrl || 'https://rpc.sepolia.org', 'https://ethereum-sepolia-rpc.publicnode.com'],
+      blockExplorerUrls: ['https://sepolia.etherscan.io'],
     };
   }
 
   switch (numericId) {
-    case 11155111:
-      return {
-        chainId: hexChainId,
-        chainName: 'Sepolia Testnet',
-        nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['https://rpc.sepolia.org', 'https://ethereum-sepolia-rpc.publicnode.com'],
-        blockExplorerUrls: ['https://sepolia.etherscan.io'],
-      };
     case 17000:
       return {
         chainId: hexChainId,
@@ -136,28 +129,13 @@ export function getChainConfig(chainId) {
         rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
         blockExplorerUrls: ['https://sepolia.arbiscan.io'],
       };
-    case 31337:
-      return {
-        chainId: hexChainId,
-        chainName: 'Local Testnet',
-        nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['http://127.0.0.1:8545'],
-      };
-    case 1337:
-    case 5777:
-      return {
-        chainId: hexChainId,
-        chainName: 'Local Development Chain',
-        nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['http://127.0.0.1:8545'],
-      };
     default:
       return null;
   }
 }
 
 /**
- * Requests the connected wallet to switch to the target chain ID.
+ * Requests the connected wallet to switch to the target chain ID (Ethereum Sepolia).
  * If the chain is not recognized by the wallet (EIP-3326 error 4902),
  * it attempts to add the chain via EIP-3085 wallet_addEthereumChain.
  *
@@ -166,14 +144,10 @@ export function getChainConfig(chainId) {
  */
 export async function switchToTargetChain(targetChainId) {
   const resolvedTargetId = targetChainId || (
-    typeof import.meta !== 'undefined' && import.meta.env?.VITE_TARGET_CHAIN_ID
-      ? parseInt(import.meta.env.VITE_TARGET_CHAIN_ID, 10)
-      : null
+    typeof import.meta !== 'undefined' && (import.meta.env?.VITE_TARGET_CHAIN_ID || import.meta.env?.VITE_CHAIN_ID)
+      ? parseInt(import.meta.env.VITE_TARGET_CHAIN_ID || import.meta.env.VITE_CHAIN_ID, 10)
+      : 11155111
   );
-
-  if (!resolvedTargetId) {
-    throw new Error('No target chain configured. Set VITE_TARGET_CHAIN_ID in frontend/.env.');
-  }
 
   const eth = getEthereumProvider(true);
   const numericId = typeof resolvedTargetId === 'string' ? parseInt(resolvedTargetId, 10) : resolvedTargetId;

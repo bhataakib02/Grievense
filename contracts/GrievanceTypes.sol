@@ -139,7 +139,13 @@ enum AuditAction {
     GRIEVANCE_CLOSED,           // 22
     SLA_UPDATED,                // 23
     CATEGORY_CREATED,           // 24
-    CATEGORY_UPDATED            // 25
+    CATEGORY_UPDATED,           // 25
+    DEPARTMENT_ACTIVATED,       // 26
+    CATEGORY_DEACTIVATED,       // 27
+    CATEGORY_ACTIVATED,         // 28
+    DEPARTMENT_ADMIN_ASSIGNED,  // 29
+    DEPARTMENT_ADMIN_REMOVED,   // 30
+    GRIEVANCE_REJECTED          // 31
 }
 
 // ============================================================================
@@ -391,3 +397,13 @@ error EmptyString(string parameterName);
 
 /// @notice A numeric value is out of the acceptable range.
 error ValueOutOfRange(string parameterName, uint256 value, uint256 minValue, uint256 maxValue);
+
+// --- Lifecycle State Errors ---
+/// @notice The department is already active.
+error DepartmentAlreadyActive(uint256 departmentId);
+
+/// @notice The category is already active.
+error CategoryAlreadyActive(uint256 categoryId);
+
+/// @notice Department admin is not assigned for this department.
+error DepartmentAdminNotAssigned(uint256 departmentId);

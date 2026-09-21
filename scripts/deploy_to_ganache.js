@@ -214,9 +214,46 @@ async function main() {
   await (await roleManager.connect(citizen1).registerCitizen()).wait();
   await (await roleManager.connect(citizen2).registerCitizen()).wait();
 
-  console.log("✅ Seed data populated: 2 Departments, 3 Categories, 2 Registered Citizens.");
+  // Create Seed Grievance #1 so /verify has a valid record to inspect immediately
+  const dummyHash = ethers.keccak256(ethers.toUtf8Bytes("Initial road repair evidence"));
+  await (await grievanceSystem.connect(citizen1).createGrievance(
+    1,
+    1,
+    1,
+    "Pothole on Main Street",
+    "QmPotholeMainStreet123",
+    dummyHash
+  )).wait();
 
-  // 9. Write frontend .env file
+  console.log("✅ Seed data populated: 2 Departments, 3 Categories, 2 Registered Citizens, 1 Seed Grievance (#1).");
+
+  // 9. Write deployments.local.json file
+  const configDir = path.join(__dirname, "..", "frontend", "src", "config");
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+
+  const deploymentsLocal = {
+    chainId: DEFAULT_CHAIN_ID,
+    network: "Ganache Local",
+    rpcUrl: providerUrl,
+    contracts: {
+      RoleManager: roleManagerAddr,
+      DepartmentManager: deptManagerAddr,
+      GrievanceSystem: grievanceSystemAddr,
+      EscalationManager: escalationManagerAddr,
+      AuditTrail: auditTrailAddr,
+    },
+  };
+
+  fs.writeFileSync(
+    path.join(configDir, "deployments.local.json"),
+    JSON.stringify(deploymentsLocal, null, 2),
+    "utf8"
+  );
+  console.log(`✅ Generated frontend/src/config/deployments.local.json with deployed Ganache addresses!`);
+
+  // 10. Write frontend .env file
   const frontendEnvPath = path.join(__dirname, "..", "frontend", ".env");
   let existingEnv = "";
   if (fs.existsSync(frontendEnvPath)) {
@@ -230,6 +267,7 @@ async function main() {
     VITE_ESCALATION_MANAGER_ADDRESS: escalationManagerAddr,
     VITE_AUDIT_TRAIL_ADDRESS: auditTrailAddr,
     VITE_TARGET_CHAIN_ID: DEFAULT_CHAIN_ID.toString(),
+    VITE_RPC_URL: providerUrl,
   };
 
   let newEnv = existingEnv;

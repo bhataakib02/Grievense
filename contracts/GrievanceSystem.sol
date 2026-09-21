@@ -129,6 +129,15 @@ contract GrievanceSystem {
     /// @dev SLA durations in seconds: Priority => duration in seconds.
     mapping(Priority => uint256) private _slaDurations;
 
+    /// @dev Index grievances by citizen address: citizenAddress => array of grievance IDs.
+    mapping(address => uint256[]) private _citizenGrievances;
+
+    /// @dev Index grievances by assigned officer address: officerAddress => array of grievance IDs.
+    mapping(address => uint256[]) private _officerGrievances;
+
+    /// @dev Index grievances by department ID: departmentId => array of grievance IDs.
+    mapping(uint256 => uint256[]) private _departmentGrievances;
+
     // ========================================================================
     //  CUSTOM ERRORS (Contract-Specific)
     // ========================================================================
@@ -270,6 +279,14 @@ contract GrievanceSystem {
         uint64 timestamp
     );
 
+    /// @notice Emitted when a grievance is rejected by an administrator during intake or review.
+    event GrievanceRejectedByAdmin(
+        uint256 indexed grievanceId,
+        address indexed rejectedBy,
+        string reason,
+        uint64 timestamp
+    );
+
     /// @notice Emitted when the Super Admin updates the SLA duration for a priority tier.
     event SLAUpdated(
         Priority indexed priority,
@@ -391,9 +408,9 @@ contract GrievanceSystem {
         string calldata descriptionCid,
         bytes32 descriptionHash
     ) external returns (uint256 grievanceId) {
-        // Authorization check: caller must be a registered Citizen
-        if (!roleManager.isCitizen(msg.sender)) {
-            revert Unauthorized(msg.sender, "CITIZEN");
+        // Authorization check: non-zero wallet address (permissionless citizen model)
+        if (msg.sender == address(0)) {
+            revert ZeroAddressNotAllowed();
         }
 
         // Validate organizational entities
@@ -442,6 +459,9 @@ contract GrievanceSystem {
         g.slaDeadline = deadline;
         g.currentResolutionId = 0;
 
+        _citizenGrievances[msg.sender].push(grievanceId);
+        _departmentGrievances[departmentId].push(grievanceId);
+
         emit GrievanceCreated(
             grievanceId,
             msg.sender,
@@ -461,6 +481,7 @@ contract GrievanceSystem {
         );
 
         _recordAudit(AuditAction.GRIEVANCE_CREATED, msg.sender, grievanceId, descriptionHash);
+        return grievanceId;
     }
 
     // ========================================================================
@@ -483,6 +504,38 @@ contract GrievanceSystem {
         _transitionStatus(grievanceId, Status.REGISTERED);
         emit GrievanceRegistered(grievanceId, msg.sender, uint64(block.timestamp));
         _recordAudit(AuditAction.GRIEVANCE_REGISTERED, msg.sender, grievanceId, bytes32(0));
+    }
+
+    /**
+     * @notice Rejects a grievance during intake, registration, or initial review.
+     * @dev Callable by Super Admin or the assigned Department Admin for this grievance's department.
+     * @param grievanceId The grievance ID to reject.
+     * @param reason The administrative explanation for rejection.
+     */
+    function rejectGrievance(
+        uint256 grievanceId,
+        string calldata reason
+    ) external onlySuperAdminOrDeptAdminFor(grievanceId) {
+        _requireGrievanceExists(grievanceId);
+        Grievance storage g = _grievances[grievanceId];
+        Status current = g.status;
+        if (
+            current != Status.SUBMITTED &&
+            current != Status.REGISTERED &&
+            current != Status.UNDER_REVIEW
+        ) {
+            revert InvalidStatusTransition(grievanceId, current, Status.REJECTED);
+        }
+
+        _transitionStatus(grievanceId, Status.REJECTED);
+
+        emit GrievanceRejectedByAdmin(grievanceId, msg.sender, reason, uint64(block.timestamp));
+        _recordAudit(
+            AuditAction.GRIEVANCE_REJECTED,
+            msg.sender,
+            grievanceId,
+            keccak256(bytes(reason))
+        );
     }
 
     /**
@@ -513,6 +566,7 @@ contract GrievanceSystem {
         // Record assignment
         uint256 assignmentId = _recordAssignment(grievanceId, g.departmentId, officer);
         g.assignedOfficer = officer;
+        _officerGrievances[officer].push(grievanceId);
 
         _transitionStatus(grievanceId, Status.ASSIGNED);
 
@@ -561,6 +615,7 @@ contract GrievanceSystem {
         address previousOfficer = g.assignedOfficer;
         uint256 assignmentId = _recordAssignment(grievanceId, g.departmentId, newOfficer);
         g.assignedOfficer = newOfficer;
+        _officerGrievances[newOfficer].push(grievanceId);
 
         // If escalated or under investigation, keep or reset to ASSIGNED/UNDER_INVESTIGATION
         if (g.status == Status.ESCALATED) {
@@ -773,7 +828,7 @@ contract GrievanceSystem {
         uint256 grievanceId,
         string calldata resolutionCid,
         bytes32 resolutionHash
-    ) external returns (uint256 resolutionId) {
+    ) public returns (uint256 resolutionId) {
         _requireAssignedOfficer(grievanceId);
         Grievance storage g = _grievances[grievanceId];
 
@@ -820,6 +875,21 @@ contract GrievanceSystem {
         );
 
         _recordAudit(AuditAction.RESOLUTION_SUBMITTED, msg.sender, grievanceId, resolutionHash);
+    }
+
+    /**
+     * @notice Alias for submitResolution to ensure API compatibility.
+     * @param grievanceId Grievance ID.
+     * @param resolutionCid IPFS CID for resolution description.
+     * @param resolutionHash Content hash for integrity verification.
+     * @return resolutionId Unique identifier of created resolution record.
+     */
+    function resolveGrievance(
+        uint256 grievanceId,
+        string calldata resolutionCid,
+        bytes32 resolutionHash
+    ) external returns (uint256 resolutionId) {
+        return submitResolution(grievanceId, resolutionCid, resolutionHash);
     }
 
     /**
@@ -1230,6 +1300,33 @@ contract GrievanceSystem {
         return _nextResolutionId - 1;
     }
 
+    /**
+     * @notice Returns all grievance IDs filed by a citizen.
+     * @param citizen Citizen wallet address.
+     * @return Array of grievance IDs.
+     */
+    function getCitizenGrievances(address citizen) external view returns (uint256[] memory) {
+        return _citizenGrievances[citizen];
+    }
+
+    /**
+     * @notice Returns all grievance IDs assigned to an officer.
+     * @param officer Officer wallet address.
+     * @return Array of grievance IDs.
+     */
+    function getOfficerGrievances(address officer) external view returns (uint256[] memory) {
+        return _officerGrievances[officer];
+    }
+
+    /**
+     * @notice Returns all grievance IDs belonging to a department.
+     * @param departmentId Department ID.
+     * @return Array of grievance IDs.
+     */
+    function getDepartmentGrievances(uint256 departmentId) external view returns (uint256[] memory) {
+        return _departmentGrievances[departmentId];
+    }
+
     // ========================================================================
     //  INTERNAL HELPERS — Validation & Transition
     // ========================================================================
@@ -1323,6 +1420,7 @@ contract GrievanceSystem {
         if (from == Status.RESOLUTION_PROPOSED && to == Status.CITIZEN_REVIEW) return true;
         if (from == Status.CITIZEN_REVIEW && to == Status.ACCEPTED) return true;
         if (from == Status.CITIZEN_REVIEW && to == Status.REJECTED) return true;
+        if ((from == Status.SUBMITTED || from == Status.REGISTERED || from == Status.UNDER_REVIEW) && to == Status.REJECTED) return true;
         if (from == Status.REJECTED && to == Status.REOPENED) return true;
         if (from == Status.ACCEPTED && to == Status.CLOSED) return true;
         // Escalation hooks reserved for future EscalationManager

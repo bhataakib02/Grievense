@@ -15,7 +15,10 @@ import {
     OfficerNotInDepartment,
     CategoryNotFound,
     CategoryNotActive,
-    EmptyString
+    EmptyString,
+    DepartmentAlreadyActive,
+    CategoryAlreadyActive,
+    DepartmentAdminNotAssigned
 } from "./GrievanceTypes.sol";
 
 /**
@@ -190,6 +193,37 @@ contract DepartmentManager {
         uint64 timestamp
     );
 
+    /// @notice Emitted when a department is reactivated.
+    event DepartmentReactivated(
+        uint256 indexed departmentId,
+        address indexed reactivatedBy,
+        uint64 timestamp
+    );
+
+    /// @notice Emitted when a department admin is removed/unassigned.
+    event DepartmentAdminRemoved(
+        uint256 indexed departmentId,
+        address indexed previousAdmin,
+        address indexed removedBy,
+        uint64 timestamp
+    );
+
+    /// @notice Emitted when a category is reactivated.
+    event CategoryReactivated(
+        uint256 indexed categoryId,
+        address indexed reactivatedBy,
+        uint64 timestamp
+    );
+
+    /// @notice Emitted when an officer is transferred between departments.
+    event OfficerDepartmentTransferred(
+        address indexed officer,
+        uint256 indexed fromDepartmentId,
+        uint256 indexed toDepartmentId,
+        address transferredBy,
+        uint64 timestamp
+    );
+
     /// @notice Emitted when the AuditTrail contract address is updated.
     event AuditTrailUpdated(address indexed previousAuditTrail, address indexed newAuditTrail);
 
@@ -356,6 +390,66 @@ contract DepartmentManager {
     }
 
     /**
+     * @notice Reactivates a previously deactivated department.
+     * @dev Only callable by Super Admin. Sets `isActive = true`.
+     * @param departmentId The department to reactivate.
+     */
+    function reactivateDepartment(uint256 departmentId) public onlySuperAdmin {
+        _requireDepartmentExists(departmentId);
+        if (_departments[departmentId].isActive) {
+            revert DepartmentAlreadyActive(departmentId);
+        }
+
+        Department storage dept = _departments[departmentId];
+        dept.isActive = true;
+        dept.updatedAt = uint64(block.timestamp);
+
+        emit DepartmentReactivated(departmentId, msg.sender, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.DEPARTMENT_ACTIVATED,
+            msg.sender,
+            departmentId,
+            bytes32(0)
+        );
+    }
+
+    /**
+     * @notice Alias for reactivateDepartment to ensure API compatibility.
+     * @param departmentId The department to activate.
+     */
+    function activateDepartment(uint256 departmentId) external onlySuperAdmin {
+        reactivateDepartment(departmentId);
+    }
+
+    /**
+     * @notice Removes/unassigns the admin from a department.
+     * @dev Only callable by Super Admin.
+     * @param departmentId The department whose admin is being removed.
+     */
+    function removeDepartmentAdmin(uint256 departmentId) external onlySuperAdmin {
+        _requireDepartmentExists(departmentId);
+
+        Department storage dept = _departments[departmentId];
+        address previousAdmin = dept.admin;
+        if (previousAdmin == address(0)) {
+            revert DepartmentAdminNotAssigned(departmentId);
+        }
+
+        dept.admin = address(0);
+        dept.updatedAt = uint64(block.timestamp);
+
+        emit DepartmentAdminRemoved(departmentId, previousAdmin, msg.sender, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.DEPARTMENT_ADMIN_REMOVED,
+            msg.sender,
+            departmentId,
+            bytes32(uint256(uint160(previousAdmin)))
+        );
+    }
+
+    /**
      * @notice Changes the admin responsible for a department.
      * @dev Only callable by Super Admin. The new admin must hold DEPARTMENT_ADMIN_ROLE
      *      in RoleManager. This does NOT grant or revoke the global role — only changes
@@ -379,6 +473,13 @@ contract DepartmentManager {
         dept.updatedAt = uint64(block.timestamp);
 
         emit DepartmentAdminChanged(departmentId, previousAdmin, newAdmin, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.DEPARTMENT_ADMIN_ASSIGNED,
+            msg.sender,
+            departmentId,
+            bytes32(uint256(uint160(newAdmin)))
+        );
     }
 
     // ========================================================================
@@ -483,6 +584,65 @@ contract DepartmentManager {
         );
     }
 
+    /**
+     * @notice Transfers an officer from one department to another.
+     * @dev Callable by Super Admin or Department Admin of the origin department.
+     * @param officer The officer to transfer.
+     * @param fromDepartmentId Current department ID.
+     * @param toDepartmentId Target department ID (must exist and be active).
+     */
+    function transferOfficerDepartment(
+        address officer,
+        uint256 fromDepartmentId,
+        uint256 toDepartmentId
+    ) external onlySuperAdminOrDeptAdminOf(fromDepartmentId) {
+        _requireDepartmentExists(fromDepartmentId);
+        _requireDepartmentExists(toDepartmentId);
+        _requireDepartmentActive(toDepartmentId);
+        if (officer == address(0)) revert ZeroAddressNotAllowed();
+        if (!_departmentOfficers[fromDepartmentId][officer]) {
+            revert OfficerNotInDepartment(officer, fromDepartmentId);
+        }
+        if (_departmentOfficers[toDepartmentId][officer]) {
+            revert OfficerAlreadyInDepartment(officer, toDepartmentId);
+        }
+
+        // Remove from origin
+        _departmentOfficers[fromDepartmentId][officer] = false;
+        _removeFromAddressArray(
+            _departmentOfficersList[fromDepartmentId],
+            _officerIndex[fromDepartmentId],
+            officer
+        );
+        _removeFromUintArray(
+            _officerDepartments[officer],
+            _officerDeptIndex[officer],
+            fromDepartmentId
+        );
+
+        // Add to destination
+        _departmentOfficers[toDepartmentId][officer] = true;
+        _officerIndex[toDepartmentId][officer] = _departmentOfficersList[toDepartmentId].length;
+        _departmentOfficersList[toDepartmentId].push(officer);
+        _officerDeptIndex[officer][toDepartmentId] = _officerDepartments[officer].length;
+        _officerDepartments[officer].push(toDepartmentId);
+
+        emit OfficerDepartmentTransferred(officer, fromDepartmentId, toDepartmentId, msg.sender, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.OFFICER_REMOVED,
+            msg.sender,
+            fromDepartmentId,
+            bytes32(uint256(uint160(officer)))
+        );
+        _recordAudit(
+            AuditAction.OFFICER_ADDED,
+            msg.sender,
+            toDepartmentId,
+            bytes32(uint256(uint160(officer)))
+        );
+    }
+
     // ========================================================================
     //  CATEGORY MANAGEMENT
     // ========================================================================
@@ -568,6 +728,44 @@ contract DepartmentManager {
         _categories[categoryId].isActive = false;
 
         emit CategoryDeactivated(categoryId, msg.sender, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.CATEGORY_DEACTIVATED,
+            msg.sender,
+            categoryId,
+            bytes32(0)
+        );
+    }
+
+    /**
+     * @notice Reactivates a previously deactivated category.
+     * @dev Only callable by Super Admin.
+     * @param categoryId The category to reactivate.
+     */
+    function reactivateCategory(uint256 categoryId) public onlySuperAdmin {
+        _requireCategoryExists(categoryId);
+        if (_categories[categoryId].isActive) {
+            revert CategoryAlreadyActive(categoryId);
+        }
+
+        _categories[categoryId].isActive = true;
+
+        emit CategoryReactivated(categoryId, msg.sender, uint64(block.timestamp));
+
+        _recordAudit(
+            AuditAction.CATEGORY_ACTIVATED,
+            msg.sender,
+            categoryId,
+            bytes32(0)
+        );
+    }
+
+    /**
+     * @notice Alias for reactivateCategory.
+     * @param categoryId The category to activate.
+     */
+    function activateCategory(uint256 categoryId) external onlySuperAdmin {
+        reactivateCategory(categoryId);
     }
 
     // ========================================================================
@@ -657,6 +855,61 @@ contract DepartmentManager {
      */
     function getOfficerDepartments(address officer) external view returns (uint256[] memory) {
         return _officerDepartments[officer];
+    }
+
+    /**
+     * @notice Returns the primary department ID of an officer (or 0 if none).
+     * @param officer The officer's wallet address.
+     * @return The primary department ID.
+     */
+    function getOfficerDepartment(address officer) external view returns (uint256) {
+        if (_officerDepartments[officer].length > 0) {
+            return _officerDepartments[officer][0];
+        }
+        return 0;
+    }
+
+    /**
+     * @notice Checks whether an officer is active (has OFFICER_ROLE and is in at least one department).
+     * @param officer The officer address to check.
+     * @return True if active officer.
+     */
+    function isOfficerActive(address officer) external view returns (bool) {
+        return roleManager.isOfficer(officer) && _officerDepartments[officer].length > 0;
+    }
+
+    /**
+     * @notice Checks whether an account is the assigned Department Admin for a department.
+     * @param departmentId The department ID.
+     * @param account The address to check.
+     * @return True if account is the assigned admin and holds DEPARTMENT_ADMIN_ROLE.
+     */
+    function isDepartmentAdminFor(uint256 departmentId, address account) external view returns (bool) {
+        return _isDepartmentAdminFor(departmentId, account);
+    }
+
+    /**
+     * @notice Returns all department IDs administered by a given address.
+     * @param admin The department admin address.
+     * @return An array of department IDs.
+     */
+    function getAdminDepartments(address admin) external view returns (uint256[] memory) {
+        uint256 total = _nextDepartmentId - 1;
+        uint256 count = 0;
+        for (uint256 i = 1; i <= total; i++) {
+            if (_departments[i].admin == admin) {
+                count++;
+            }
+        }
+        uint256[] memory ids = new uint256[](count);
+        uint256 idx = 0;
+        for (uint256 i = 1; i <= total; i++) {
+            if (_departments[i].admin == admin) {
+                ids[idx] = i;
+                idx++;
+            }
+        }
+        return ids;
     }
 
     // ========================================================================

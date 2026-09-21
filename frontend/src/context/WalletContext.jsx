@@ -74,7 +74,7 @@ export function WalletProvider({ children }) {
       }
 
       const computedNetwork = formatChainName(numericChainId);
-      const targetChainIdNum = parseChainId(import.meta.env.VITE_TARGET_CHAIN_ID);
+      const targetChainIdNum = parseChainId(import.meta.env.VITE_TARGET_CHAIN_ID || import.meta.env.VITE_CHAIN_ID) || 11155111;
       const isSupported = targetChainIdNum ? numericChainId === targetChainIdNum : true;
 
       // Development diagnostics collection
@@ -149,9 +149,9 @@ export function WalletProvider({ children }) {
   // Requests the wallet to switch to the target chain ID
   const switchToTargetNetwork = useCallback(
     async (targetId = null) => {
-      const target = targetId || parseChainId(import.meta.env.VITE_TARGET_CHAIN_ID);
+      const target = targetId || parseChainId(import.meta.env.VITE_TARGET_CHAIN_ID || import.meta.env.VITE_CHAIN_ID) || 11155111;
       if (!target) {
-        const msg = 'Target network chain ID is not configured. Set VITE_TARGET_CHAIN_ID in frontend/.env.';
+        const msg = 'Target network chain ID is not configured. Set VITE_CHAIN_ID in frontend/.env.';
         setError(msg);
         throw new Error(msg);
       }

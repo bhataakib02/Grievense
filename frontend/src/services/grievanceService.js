@@ -460,14 +460,28 @@ export async function fetchCitizenGrievances(runner, citizenAddress) {
   }
 
   const grievanceContract = getGrievanceSystemContract(runner);
-  const totalCountBig = await grievanceContract.getGrievanceCount();
-  const totalCount = Number(totalCountBig);
 
-  if (totalCount === 0) {
-    return [];
+  // 1. Fast on-chain getter
+  try {
+    if (typeof grievanceContract.getCitizenGrievances === 'function') {
+      const ids = await grievanceContract.getCitizenGrievances(citizenAddress);
+      if (ids && ids.length > 0) {
+        const detailsPromises = ids.map((id) => grievanceContract.getGrievance(id));
+        const records = await Promise.all(detailsPromises);
+        return records.map(_normalizeGrievance);
+      } else if (ids && ids.length === 0) {
+        return [];
+      }
+    }
+  } catch (err) {
+    console.warn('getCitizenGrievances failed, falling back to scan:', err);
   }
 
-  // Iterate backwards from latest to earliest (max 50 to keep query bounded)
+  // 2. Fallback scan
+  const totalCountBig = await grievanceContract.getGrievanceCount();
+  const totalCount = Number(totalCountBig);
+  if (totalCount === 0) return [];
+
   const maxToScan = Math.min(totalCount, 50);
   const ownerCheckPromises = [];
 
@@ -480,10 +494,7 @@ export async function fetchCitizenGrievances(runner, citizenAddress) {
 
   const checks = await Promise.all(ownerCheckPromises);
   const myGrievanceIds = checks.filter((c) => c.isOwner).map((c) => c.id);
-
-  if (myGrievanceIds.length === 0) {
-    return [];
-  }
+  if (myGrievanceIds.length === 0) return [];
 
   const detailsPromises = myGrievanceIds.map((id) => grievanceContract.getGrievance(id));
   const records = await Promise.all(detailsPromises);
@@ -502,14 +513,28 @@ export async function fetchOfficerGrievances(runner, officerAddress) {
   }
 
   const grievanceContract = getGrievanceSystemContract(runner);
-  const totalCountBig = await grievanceContract.getGrievanceCount();
-  const totalCount = Number(totalCountBig);
 
-  if (totalCount === 0) {
-    return [];
+  // 1. Fast on-chain getter
+  try {
+    if (typeof grievanceContract.getOfficerGrievances === 'function') {
+      const ids = await grievanceContract.getOfficerGrievances(officerAddress);
+      if (ids && ids.length > 0) {
+        const detailsPromises = ids.map((id) => grievanceContract.getGrievance(id));
+        const records = await Promise.all(detailsPromises);
+        return records.map(_normalizeGrievance);
+      } else if (ids && ids.length === 0) {
+        return [];
+      }
+    }
+  } catch (err) {
+    console.warn('getOfficerGrievances failed, falling back to scan:', err);
   }
 
-  // Iterate backwards from latest to earliest (bounded to latest 100 cases)
+  // 2. Fallback scan
+  const totalCountBig = await grievanceContract.getGrievanceCount();
+  const totalCount = Number(totalCountBig);
+  if (totalCount === 0) return [];
+
   const maxToScan = Math.min(totalCount, 100);
   const assignmentCheckPromises = [];
 
@@ -522,14 +547,59 @@ export async function fetchOfficerGrievances(runner, officerAddress) {
 
   const checks = await Promise.all(assignmentCheckPromises);
   const assignedIds = checks.filter((c) => c.isAssigned).map((c) => c.id);
-
-  if (assignedIds.length === 0) {
-    return [];
-  }
+  if (assignedIds.length === 0) return [];
 
   const detailsPromises = assignedIds.map((id) => grievanceContract.getGrievance(id));
   const records = await Promise.all(detailsPromises);
   return records.map(_normalizeGrievance);
+}
+
+/**
+ * Queries all grievances assigned to a department.
+ * @param {import('ethers').ContractRunner} runner
+ * @param {number} departmentId
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchDepartmentGrievances(runner, departmentId) {
+  if (!isContractConfigured('GrievanceSystem') || !runner || !departmentId) {
+    return [];
+  }
+
+  const grievanceContract = getGrievanceSystemContract(runner);
+
+  // 1. Fast on-chain getter
+  try {
+    if (typeof grievanceContract.getDepartmentGrievances === 'function') {
+      const ids = await grievanceContract.getDepartmentGrievances(departmentId);
+      if (ids && ids.length > 0) {
+        const detailsPromises = ids.map((id) => grievanceContract.getGrievance(id));
+        const records = await Promise.all(detailsPromises);
+        return records.map(_normalizeGrievance);
+      } else if (ids && ids.length === 0) {
+        return [];
+      }
+    }
+  } catch (err) {
+    console.warn('getDepartmentGrievances failed, falling back to scan:', err);
+  }
+
+  // 2. Fallback scan
+  const totalCountBig = await grievanceContract.getGrievanceCount();
+  const totalCount = Number(totalCountBig);
+  if (totalCount === 0) return [];
+
+  const maxToScan = Math.min(totalCount, 100);
+  const promises = [];
+  for (let i = 0; i < maxToScan; i++) {
+    const id = totalCount - i;
+    promises.push(grievanceContract.getGrievance(id));
+  }
+
+  const results = await Promise.allSettled(promises);
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .map((r) => _normalizeGrievance(r.value))
+    .filter((g) => Number(g.departmentId) === Number(departmentId));
 }
 
 /**
@@ -554,18 +624,6 @@ export async function fetchAllGrievances(runner, maxCount = 200) {
 
   const records = await Promise.all(promises);
   return records.map(_normalizeGrievance);
-}
-
-/**
- * Fetches grievances belonging to a specific department.
- * @param {import('ethers').ContractRunner} runner
- * @param {number} departmentId
- * @param {number} [maxCount=200]
- * @returns {Promise<Array<object>>}
- */
-export async function fetchDepartmentGrievances(runner, departmentId, maxCount = 200) {
-  const all = await fetchAllGrievances(runner, maxCount);
-  return all.filter((g) => g.departmentId === departmentId);
 }
 
 // ========================================================================
@@ -1044,6 +1102,18 @@ export async function revokeEvidence(signer, arg1, arg2, arg3) {
     reason = arg2;
   }
   const tx = await contract.revokeEvidence(evidenceId, reason || '');
+  return tx.wait();
+}
+
+/**
+ * Super Admin or Department Admin: Administratively rejects a grievance with reason.
+ * @param {import('ethers').Signer} signer
+ * @param {number} grievanceId
+ * @param {string} reason
+ */
+export async function rejectGrievance(signer, grievanceId, reason) {
+  const contract = getGrievanceSystemContract(signer);
+  const tx = await contract.rejectGrievance(grievanceId, reason || '');
   return tx.wait();
 }
 

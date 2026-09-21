@@ -623,6 +623,37 @@
       {
         "indexed": true,
         "internalType": "address",
+        "name": "rejectedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "reason",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "name": "GrievanceRejectedByAdmin",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "grievanceId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
         "name": "citizen",
         "type": "address"
       },
@@ -1147,6 +1178,44 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "citizen",
+        "type": "address"
+      }
+    ],
+    "name": "getCitizenGrievances",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getDepartmentGrievances",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "evidenceId",
         "type": "uint256"
@@ -1470,6 +1539,25 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "officer",
+        "type": "address"
+      }
+    ],
+    "name": "getOfficerGrievances",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "resolutionId",
         "type": "uint256"
@@ -1709,6 +1797,24 @@
         "type": "uint256"
       },
       {
+        "internalType": "string",
+        "name": "reason",
+        "type": "string"
+      }
+    ],
+    "name": "rejectGrievance",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "grievanceId",
+        "type": "uint256"
+      },
+      {
         "internalType": "bytes32",
         "name": "rejectionReasonHash",
         "type": "bytes32"
@@ -1742,6 +1848,35 @@
     ],
     "name": "resolveEscalationStatus",
     "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "grievanceId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "resolutionCid",
+        "type": "string"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "resolutionHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "resolveGrievance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "resolutionId",
+        "type": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable",
     "type": "function"
   },

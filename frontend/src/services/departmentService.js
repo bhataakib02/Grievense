@@ -286,7 +286,7 @@ export async function updateCategory(signer, categoryId, name, description) {
 }
 
 /**
- * Super Admin: Deactivates a category.
+ * Super Admin or Department Admin: Deactivates a category.
  */
 export async function deactivateCategory(signer, categoryId) {
   try {
@@ -297,3 +297,83 @@ export async function deactivateCategory(signer, categoryId) {
     throw new Error(parseDepartmentError(err));
   }
 }
+
+/**
+ * Super Admin: Reactivates an inactive department.
+ */
+export async function reactivateDepartment(signer, departmentId) {
+  try {
+    const contract = getDepartmentManagerContract(signer);
+    const tx = await contract.reactivateDepartment(departmentId);
+    return await tx.wait();
+  } catch (err) {
+    throw new Error(parseDepartmentError(err));
+  }
+}
+
+/**
+ * Super Admin: Removes the department admin from a department.
+ */
+export async function removeDepartmentAdmin(signer, departmentId) {
+  try {
+    const contract = getDepartmentManagerContract(signer);
+    const tx = await contract.removeDepartmentAdmin(departmentId);
+    return await tx.wait();
+  } catch (err) {
+    throw new Error(parseDepartmentError(err));
+  }
+}
+
+/**
+ * Super Admin or Department Admin: Reactivates a category.
+ */
+export async function reactivateCategory(signer, categoryId) {
+  try {
+    const contract = getDepartmentManagerContract(signer);
+    const tx = await contract.reactivateCategory(categoryId);
+    return await tx.wait();
+  } catch (err) {
+    throw new Error(parseDepartmentError(err));
+  }
+}
+
+/**
+ * Super Admin or Department Admin: Transfers an officer between departments.
+ */
+export async function transferOfficerDepartment(signer, officerAddress, fromDepartmentId, toDepartmentId) {
+  try {
+    const contract = getDepartmentManagerContract(signer);
+    const tx = await contract.transferOfficerDepartment(officerAddress, fromDepartmentId, toDepartmentId);
+    return await tx.wait();
+  } catch (err) {
+    throw new Error(parseDepartmentError(err));
+  }
+}
+
+/**
+ * Checks if an address is admin for a specific department.
+ */
+export async function isDepartmentAdminFor(runner, departmentId, adminAddress) {
+  if (!isContractConfigured('DepartmentManager') || !runner || !adminAddress) return false;
+  try {
+    const contract = getDepartmentManagerContract(runner);
+    return await contract.isDepartmentAdminFor(departmentId, adminAddress);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns all department IDs an admin manages.
+ */
+export async function getAdminDepartments(runner, adminAddress) {
+  if (!isContractConfigured('DepartmentManager') || !runner || !adminAddress) return [];
+  try {
+    const contract = getDepartmentManagerContract(runner);
+    const depts = await contract.getAdminDepartments(adminAddress);
+    return depts.map((id) => Number(id));
+  } catch {
+    return [];
+  }
+}
+

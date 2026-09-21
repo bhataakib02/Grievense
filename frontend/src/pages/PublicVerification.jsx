@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from '../hooks/useWallet';
-import { useRouter } from '../hooks/useRouter';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Alert } from '../components/common/Alert';
-import { formatTimestamp, shortenAddress } from '../utils/formatters';
+import {
+  formatTimestamp,
+  shortenAddress,
+  getExplorerAddressUrl,
+  getExplorerTxUrl,
+} from '../utils/formatters';
 import {
   STATUS_METADATA,
   PRIORITY_METADATA,
@@ -17,10 +21,10 @@ import {
 } from '../services/grievanceService';
 import { fetchFromIpfs, computeContentHash } from '../services/ipfs';
 import { AuditTimeline } from '../components/grievance/AuditTimeline';
+import { SEPOLIA_RPC_URL, isContractConfigured } from '../contracts/addresses.js';
 
 export function PublicVerification({ initialGrievanceId }) {
   const { provider, signer } = useWallet();
-  const { navigate } = useRouter();
 
   const [inputGrievanceId, setInputGrievanceId] = useState(initialGrievanceId || '');
   const [activeGrievanceId, setActiveGrievanceId] = useState(initialGrievanceId || '');
@@ -38,13 +42,12 @@ export function PublicVerification({ initialGrievanceId }) {
   // Resolution verification state
   const [resVerifyState, setResVerifyState] = useState({});
 
-  // Helper to obtain a working read-only provider
+  // Helper to obtain a working read-only provider (does not require wallet signature)
   const getRunner = useCallback(() => {
     if (signer) return signer;
     if (provider) return provider;
     try {
-      const rpcUrl = import.meta.env.VITE_RPC_URL;
-      if (!rpcUrl) return null;
+      const rpcUrl = import.meta.env.VITE_RPC_URL || SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
       return new ethers.JsonRpcProvider(rpcUrl);
     } catch {
       return null;
@@ -212,6 +215,13 @@ export function PublicVerification({ initialGrievanceId }) {
         </div>
       </Card>
 
+      {!isContractConfigured('GrievanceSystem') && (
+        <Alert variant="warning" title="Sepolia Smart Contracts Not Yet Configured">
+          The <code className="font-mono font-bold">GrievanceSystem</code> contract address is currently empty in <code className="font-mono">frontend/.env</code>.
+          Deploy the contracts to Ethereum Sepolia via Remix IDE with MetaMask, set <code className="font-mono font-bold">VITE_GRIEVANCE_SYSTEM_ADDRESS</code> in <code className="font-mono">.env</code>, and reload to query on-chain grievances.
+        </Alert>
+      )}
+
       {error && (
         <Alert variant="danger" title="Verification Query Error">
           {error}
@@ -240,6 +250,24 @@ export function PublicVerification({ initialGrievanceId }) {
                 <Badge variant={priorityMeta.badgeVariant}>{priorityMeta.label} Priority</Badge>
               </div>
               <h3 className="text-lg font-bold text-slate-900 mt-1">{grievance.title}</h3>
+              <div className="flex flex-wrap gap-x-4 text-xs text-slate-600 mt-1.5 font-sans">
+                {departmentName && <span>Department: <strong className="text-slate-900">{departmentName}</strong></span>}
+                {categoryName && <span>Category: <strong className="text-slate-900">{categoryName}</strong></span>}
+                {grievance.citizen && (
+                  <span>
+                    Citizen:{' '}
+                    <a
+                      href={getExplorerAddressUrl(grievance.citizen)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline font-mono font-semibold inline-flex items-center gap-0.5"
+                      title="View on Sepolia Etherscan"
+                    >
+                      {shortenAddress(grievance.citizen, 6)} ↗
+                    </a>
+                  </span>
+                )}
+              </div>
             </div>
             <div className="text-right text-xs text-slate-500 font-mono">
               <div>Created: {formatTimestamp(grievance.createdAt)}</div>

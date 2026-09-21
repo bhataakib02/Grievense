@@ -1,81 +1,49 @@
 import { isValidAddress } from '../utils/formatters.js';
- 
-const env =
-  typeof import.meta !== 'undefined' && import.meta.env
-    ? import.meta.env
-    : typeof process !== 'undefined'
-      ? process.env
-      : {};
+import {
+  ROLE_MANAGER_ADDRESS,
+  DEPARTMENT_MANAGER_ADDRESS,
+  GRIEVANCE_SYSTEM_ADDRESS,
+  ESCALATION_MANAGER_ADDRESS,
+  AUDIT_TRAIL_ADDRESS,
+  TARGET_CHAIN_ID,
+  TARGET_NETWORK_NAME,
+  SEPOLIA_RPC_URL,
+  SEPOLIA_EXPLORER_URL,
+  CONTRACT_ADDRESSES,
+  CONTRACT_METADATA,
+  isContractConfigured,
+  getContractConfigurationStatus,
+} from '../config/contracts.js';
 
-/**
- * Smart contract addresses configured via environment variables.
- * In Step 10 Foundation, these default to empty strings if not configured.
- */
-export const CONTRACT_ADDRESSES = {
-  RoleManager: env.VITE_ROLE_MANAGER_ADDRESS || '',
-  DepartmentManager: env.VITE_DEPARTMENT_MANAGER_ADDRESS || '',
-  GrievanceSystem: env.VITE_GRIEVANCE_SYSTEM_ADDRESS || '',
-  EscalationManager: env.VITE_ESCALATION_MANAGER_ADDRESS || '',
-  AuditTrail: env.VITE_AUDIT_TRAIL_ADDRESS || '',
+export {
+  ROLE_MANAGER_ADDRESS,
+  DEPARTMENT_MANAGER_ADDRESS,
+  GRIEVANCE_SYSTEM_ADDRESS,
+  ESCALATION_MANAGER_ADDRESS,
+  AUDIT_TRAIL_ADDRESS,
+  TARGET_CHAIN_ID,
+  TARGET_NETWORK_NAME,
+  SEPOLIA_RPC_URL,
+  SEPOLIA_EXPLORER_URL,
+  CONTRACT_ADDRESSES,
+  CONTRACT_METADATA,
+  isContractConfigured,
+  getContractConfigurationStatus,
 };
 
+// Backwards compatibility alias
+export const RPC_URL = SEPOLIA_RPC_URL;
+export const CONTRACT_NAMES = CONTRACT_METADATA;
+
 /**
- * Programmatically updates a contract address in memory (used by tests or runtime switching).
+ * Programmatically updates a contract address in memory (used by runtime testing if needed).
  * @param {string} contractKey
  * @param {string} address
  */
 export function setContractAddress(contractKey, address) {
-  if (CONTRACT_ADDRESSES.hasOwnProperty(contractKey)) {
+  if (Object.prototype.hasOwnProperty.call(CONTRACT_ADDRESSES, contractKey)) {
     CONTRACT_ADDRESSES[contractKey] = address;
   }
-}
-
-export const CONTRACT_NAMES = [
-  { key: 'RoleManager', label: 'Role Manager', description: 'RBAC Authorization & User Registration' },
-  { key: 'DepartmentManager', label: 'Department Manager', description: 'Department Directory & Categories' },
-  { key: 'GrievanceSystem', label: 'Grievance System', description: 'Core Grievance Lifecycle & Investigations' },
-  { key: 'EscalationManager', label: 'Escalation Manager', description: 'SLA Escalations & Reallocations' },
-  { key: 'AuditTrail', label: 'Audit Trail', description: 'Immutable On-Chain Forensic Log' },
-];
-
-/**
- * Validates whether all required smart contracts are configured with valid Ethereum addresses.
- * @returns {{ isConfigured: boolean, hasAnyConfigured: boolean, missing: string[], configured: string[], statusMessage: string }}
- */
-export function getContractConfigurationStatus() {
-  const missing = [];
-  const configured = [];
-
-  for (const item of CONTRACT_NAMES) {
-    const addr = CONTRACT_ADDRESSES[item.key];
-    if (addr && isValidAddress(addr)) {
-      configured.push(item.key);
-    } else {
-      missing.push(item.key);
-    }
-  }
-
-  const isConfigured = missing.length === 0;
-
-  return {
-    isConfigured,
-    hasAnyConfigured: configured.length > 0,
-    missing,
-    configured,
-    statusMessage: isConfigured
-      ? 'All smart contracts configured.'
-      : 'Contract deployment configuration incomplete.',
-  };
-}
-
-/**
- * Checks if a specific contract has a valid deployed address.
- * @param {string} contractKey
- * @returns {boolean}
- */
-export function isContractConfigured(contractKey) {
-  const addr = CONTRACT_ADDRESSES[contractKey];
-  return isValidAddress(addr);
 }
 
 /**
@@ -87,7 +55,7 @@ export async function verifyContractBytecode(provider) {
   const results = {};
   let allVerified = true;
 
-  for (const item of CONTRACT_NAMES) {
+  for (const item of CONTRACT_METADATA) {
     const addr = CONTRACT_ADDRESSES[item.key];
     const isConfig = Boolean(addr && isValidAddress(addr));
     let hasBytecode = false;
@@ -115,3 +83,15 @@ export async function verifyContractBytecode(provider) {
 
   return { allVerified, results };
 }
+
+export default {
+  CONTRACT_ADDRESSES,
+  TARGET_CHAIN_ID,
+  TARGET_NETWORK_NAME,
+  SEPOLIA_RPC_URL,
+  SEPOLIA_EXPLORER_URL,
+  CONTRACT_METADATA,
+  isContractConfigured,
+  getContractConfigurationStatus,
+  verifyContractBytecode,
+};

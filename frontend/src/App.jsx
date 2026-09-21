@@ -12,6 +12,7 @@ import { OfficerDashboard } from './pages/OfficerDashboard';
 import { DepartmentAdminDashboard } from './pages/DepartmentAdminDashboard';
 import { SuperAdminDashboard } from './pages/SuperAdminDashboard';
 import { PublicVerification } from './pages/PublicVerification';
+import { BlockchainDebugPage } from './pages/BlockchainDebugPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { ProtectedRoute } from './components/navigation/ProtectedRoute';
 import { ROLES } from './services/roleService';
@@ -25,6 +26,11 @@ function AppRoutes() {
       ? currentRoute.replace('/verify/', '').trim()
       : '';
     return <PublicVerification initialGrievanceId={initialId} />;
+  }
+
+  // Blockchain diagnostic route
+  if (currentRoute === '/debug/blockchain') {
+    return <BlockchainDebugPage />;
   }
 
   // Citizen grievance creation
@@ -88,6 +94,7 @@ function AppRoutes() {
       );
 
     case '/dept-admin':
+    case '/department-admin':
       return (
         <ProtectedRoute allowedRoles={[ROLES.DEPARTMENT_ADMIN, ROLES.SUPER_ADMIN]}>
           <DepartmentAdminDashboard />
@@ -95,6 +102,7 @@ function AppRoutes() {
       );
 
     case '/super-admin':
+    case '/admin':
       return (
         <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]}>
           <SuperAdminDashboard />

@@ -15,17 +15,18 @@ import {
   registerGrievance,
   assignOfficer,
   reassignOfficer,
+  rejectGrievance,
 } from '../services/grievanceService';
 import {
   fetchAllDepartments,
   fetchDepartmentOfficers,
   addOfficerToDepartment,
   removeOfficerFromDepartment,
+  transferOfficerDepartment,
 } from '../services/departmentService';
 import { grantOfficerRole } from '../services/adminRoleService';
 import { fetchUserRoles } from '../services/roleService';
 import {
-  checkIsSLABreached,
   escalateGrievance,
   resolveEscalation,
 } from '../services/escalationService';
@@ -40,7 +41,7 @@ export function DepartmentAdminDashboard() {
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [deptOfficers, setDeptOfficers] = useState([]);
   const [deptGrievances, setDeptGrievances] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -51,6 +52,10 @@ export function DepartmentAdminDashboard() {
   const [assignTargetGrievance, setAssignTargetGrievance] = useState(null);
   const [selectedOfficerForAssign, setSelectedOfficerForAssign] = useState('');
 
+  // Rejection modal state
+  const [rejectTargetGrievance, setRejectTargetGrievance] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   // Reassign modal state
   const [reassignTarget, setReassignTarget] = useState(null);
   const [newOfficerForReassign, setNewOfficerForReassign] = useState('');
@@ -59,6 +64,10 @@ export function DepartmentAdminDashboard() {
   // Officer add state
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
   const [newOfficerAddress, setNewOfficerAddress] = useState('');
+
+  // Officer transfer state
+  const [transferTargetOfficer, setTransferTargetOfficer] = useState('');
+  const [transferTargetDeptId, setTransferTargetDeptId] = useState('');
 
   const runner = provider || signer;
 
@@ -268,6 +277,51 @@ export function DepartmentAdminDashboard() {
     }
   };
 
+  // Reject Grievance (Administrative Rejection)
+  const handleRejectGrievance = async (e) => {
+    e?.preventDefault();
+    if (!rejectTargetGrievance) return;
+    try {
+      setActionLoading(`reject_${rejectTargetGrievance.id}`);
+      setError(null);
+      setSuccessMsg('');
+      await rejectGrievance(signer, rejectTargetGrievance.id, rejectReason.trim() || 'Rejected by Department Admin');
+      setSuccessMsg(`Grievance #${rejectTargetGrievance.id} administratively rejected.`);
+      setRejectTargetGrievance(null);
+      setRejectReason('');
+      await loadDeptData();
+    } catch (err) {
+      setError(err.message || 'Failed to reject grievance.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // Transfer Officer to Another Department
+  const handleTransferOfficer = async (e) => {
+    e?.preventDefault();
+    if (!transferTargetOfficer || !transferTargetDeptId) return;
+    try {
+      setActionLoading(`transfer_${transferTargetOfficer}`);
+      setError(null);
+      setSuccessMsg('');
+      await transferOfficerDepartment(
+        signer,
+        transferTargetOfficer,
+        selectedDeptId,
+        Number(transferTargetDeptId)
+      );
+      setSuccessMsg(`Officer ${shortenAddress(transferTargetOfficer, 6)} successfully transferred to Department #${transferTargetDeptId}.`);
+      setTransferTargetOfficer('');
+      setTransferTargetDeptId('');
+      await loadDeptData();
+    } catch (err) {
+      setError(err.message || 'Officer transfer failed.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   // --------------------------------------------------------------------------
   // Categorized Grievance Lists
   // --------------------------------------------------------------------------
@@ -425,6 +479,16 @@ export function DepartmentAdminDashboard() {
                               >
                                 Register Intake
                               </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => {
+                                  setRejectTargetGrievance(g);
+                                  setRejectReason('');
+                                }}
+                              >
+                                Reject
+                              </Button>
                             </div>
                           </div>
                         );
@@ -470,6 +534,16 @@ export function DepartmentAdminDashboard() {
                                 onClick={() => setAssignTargetGrievance(g)}
                               >
                                 Assign Officer
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => {
+                                  setRejectTargetGrievance(g);
+                                  setRejectReason('');
+                                }}
+                              >
+                                Reject
                               </Button>
                             </div>
                           </div>
@@ -535,6 +609,53 @@ export function DepartmentAdminDashboard() {
                     disabled={deptOfficers.length === 0}
                   >
                     Confirm Officer Assignment
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          )}
+
+          {/* Reject Grievance Modal */}
+          {rejectTargetGrievance && (
+            <Card
+              title={`Reject Grievance #${rejectTargetGrievance.id}`}
+              subtitle={rejectTargetGrievance.title}
+              className="border-rose-300 bg-rose-50/20"
+            >
+              <form onSubmit={handleRejectGrievance} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Rejection Reason / Grounds *
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="State the administrative or jurisdiction grounds for rejection..."
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setRejectTargetGrievance(null);
+                      setRejectReason('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="danger"
+                    size="sm"
+                    loading={actionLoading === `reject_${rejectTargetGrievance.id}`}
+                    disabled={!rejectReason.trim()}
+                  >
+                    Confirm Administrative Rejection
                   </Button>
                 </div>
               </form>
@@ -632,18 +753,85 @@ export function DepartmentAdminDashboard() {
                       </Badge>
                       <span className="font-mono text-slate-900 font-semibold">{offAddr}</span>
                     </div>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      loading={actionLoading === `remove_${offAddr}`}
-                      onClick={() => handleRemoveOfficer(offAddr)}
-                      className="text-[11px] py-1 px-2.5"
-                    >
-                      Remove
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setTransferTargetOfficer(offAddr);
+                          setTransferTargetDeptId('');
+                        }}
+                        className="text-[11px] py-1 px-2.5"
+                      >
+                        Transfer
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={actionLoading === `remove_${offAddr}`}
+                        onClick={() => handleRemoveOfficer(offAddr)}
+                        className="text-[11px] py-1 px-2.5"
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Transfer Officer Modal */}
+            {transferTargetOfficer && (
+              <Card
+                title="Transfer Officer to Another Department"
+                subtitle={`Officer: ${transferTargetOfficer}`}
+                className="border-indigo-300 bg-indigo-50/20 mt-4"
+              >
+                <form onSubmit={handleTransferOfficer} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Destination Department *
+                    </label>
+                    <select
+                      required
+                      value={transferTargetDeptId}
+                      onChange={(e) => setTransferTargetDeptId(e.target.value)}
+                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
+                    >
+                      <option value="">-- Choose Destination Department --</option>
+                      {departments
+                        .filter((d) => d.id !== selectedDeptId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            #{d.id} - {d.name} {d.isActive ? '' : '(Inactive)'}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setTransferTargetOfficer('');
+                        setTransferTargetDeptId('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      loading={actionLoading === `transfer_${transferTargetOfficer}`}
+                      disabled={!transferTargetDeptId}
+                    >
+                      Confirm Transfer
+                    </Button>
+                  </div>
+                </form>
+              </Card>
             )}
           </div>
         </Card>

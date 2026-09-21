@@ -172,12 +172,7 @@ export function CreateGrievance() {
     }
 
     if (!isContractConfigured('GrievanceSystem')) {
-      setErrorMessage('GrievanceSystem contract is not configured in .env. Cannot send transaction.');
-      return;
-    }
-
-    if (!isRegistered) {
-      setErrorMessage('Your wallet is not registered on-chain. Please complete citizen registration below.');
+      setErrorMessage('GrievanceSystem contract is not configured. Cannot send transaction.');
       return;
     }
 
@@ -389,23 +384,22 @@ export function CreateGrievance() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Badge variant="warning">Registration Required</Badge>
-                <span className="text-xs font-semibold text-amber-900">On-Chain Identity</span>
+                <Badge variant="primary">Direct Intake Enabled</Badge>
+                <span className="text-xs font-semibold text-slate-900">On-Chain Identity</span>
               </div>
-              <p className="text-xs text-amber-800 leading-relaxed">
-                Your wallet holds citizen access, but has not completed on-chain self-registration in
-                <code className="font-mono text-amber-950 font-semibold ml-1">RoleManager.sol</code>.
-                Solidity authorization requires a confirmed registration transaction before intake.
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Permissionless intake is enabled: you can submit grievances directly with any wallet. You may also optionally record your profile in
+                <code className="font-mono text-slate-950 font-semibold ml-1">RoleManager.sol</code>.
               </p>
             </div>
             <Button
-              variant="primary"
+              variant="secondary"
               size="sm"
               loading={isSelfRegistering}
               onClick={handleRegister}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+              className="border-blue-300 text-blue-800 hover:bg-blue-50 shrink-0"
             >
-              Register as Citizen (MetaMask)
+              Optional: Register Profile
             </Button>
           </div>
         </Card>
@@ -644,7 +638,7 @@ export function CreateGrievance() {
                 variant="primary"
                 size="lg"
                 loading={txState !== 'IDLE' && txState !== 'ERROR'}
-                disabled={!isConnected || !isRegistered || !isTitleValid || !description.trim() || departments.length === 0 || !isContractConfigured('GrievanceSystem')}
+                disabled={!isConnected || !isTitleValid || !description.trim() || departments.length === 0 || !isContractConfigured('GrievanceSystem')}
                 className="w-full sm:w-auto font-semibold px-8"
               >
                 Submit Grievance to Blockchain

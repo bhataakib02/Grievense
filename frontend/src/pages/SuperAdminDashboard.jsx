@@ -13,11 +13,14 @@ import {
   createDepartment,
   updateDepartment,
   deactivateDepartment,
+  reactivateDepartment,
   setDepartmentAdmin,
+  removeDepartmentAdmin,
   fetchAllCategories,
   createCategory,
   updateCategory,
   deactivateCategory,
+  reactivateCategory,
 } from '../services/departmentService';
 
 import {
@@ -241,7 +244,7 @@ export function SuperAdminDashboard() {
   };
 
   const handleDeactivateDept = async (deptId) => {
-    if (!window.confirm(`Warning: Deactivating Department #${deptId} is permanent. The contract has no reactivation function. Proceed?`)) {
+    if (!window.confirm(`Are you sure you want to deactivate Department #${deptId}?`)) {
       return;
     }
     try {
@@ -249,10 +252,43 @@ export function SuperAdminDashboard() {
       setError(null);
       setSuccessMsg('');
       await deactivateDepartment(signer, deptId);
-      setSuccessMsg(`Department #${deptId} permanently deactivated.`);
+      setSuccessMsg(`Department #${deptId} deactivated.`);
       await loadDepartments();
     } catch (err) {
       setError(err.message || 'Failed to deactivate department.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleReactivateDept = async (deptId) => {
+    try {
+      setActionLoading(`react_dept_${deptId}`);
+      setError(null);
+      setSuccessMsg('');
+      await reactivateDepartment(signer, deptId);
+      setSuccessMsg(`Department #${deptId} reactivated successfully!`);
+      await loadDepartments();
+    } catch (err) {
+      setError(err.message || 'Failed to reactivate department.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleRemoveDeptAdmin = async (deptId) => {
+    if (!window.confirm(`Are you sure you want to remove the admin for Department #${deptId}?`)) {
+      return;
+    }
+    try {
+      setActionLoading(`rm_admin_${deptId}`);
+      setError(null);
+      setSuccessMsg('');
+      await removeDepartmentAdmin(signer, deptId);
+      setSuccessMsg(`Admin removed from Department #${deptId}.`);
+      await loadDepartments();
+    } catch (err) {
+      setError(err.message || 'Failed to remove department admin.');
     } finally {
       setActionLoading('');
     }
@@ -308,6 +344,21 @@ export function SuperAdminDashboard() {
       await loadCategories();
     } catch (err) {
       setError(err.message || 'Failed to deactivate category.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleReactivateCategory = async (catId) => {
+    try {
+      setActionLoading(`react_cat_${catId}`);
+      setError(null);
+      setSuccessMsg('');
+      await reactivateCategory(signer, catId);
+      setSuccessMsg(`Category #${catId} reactivated successfully!`);
+      await loadCategories();
+    } catch (err) {
+      setError(err.message || 'Failed to reactivate category.');
     } finally {
       setActionLoading('');
     }
@@ -560,7 +611,7 @@ export function SuperAdminDashboard() {
                         <span>
                           Assigned Admin: <span className="font-mono text-slate-900">{d.admin}</span>
                         </span>
-                        {d.isActive && (
+                        {d.isActive ? (
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -583,13 +634,38 @@ export function SuperAdminDashboard() {
                             >
                               Change Admin
                             </button>
+                            {d.admin && d.admin !== '0x0000000000000000000000000000000000000000' && (
+                              <>
+                                <span>|</span>
+                                <button
+                                  type="button"
+                                  disabled={actionLoading === `rm_admin_${d.id}`}
+                                  onClick={() => handleRemoveDeptAdmin(d.id)}
+                                  className="text-amber-600 hover:text-amber-800 font-medium underline cursor-pointer"
+                                >
+                                  {actionLoading === `rm_admin_${d.id}` ? 'Removing...' : 'Remove Admin'}
+                                </button>
+                              </>
+                            )}
                             <span>|</span>
                             <button
                               type="button"
+                              disabled={actionLoading === `deact_dept_${d.id}`}
                               onClick={() => handleDeactivateDept(d.id)}
-                              className="text-rose-600 hover:text-rose-800 font-medium underline"
+                              className="text-rose-600 hover:text-rose-800 font-medium underline cursor-pointer"
                             >
-                              Deactivate
+                              {actionLoading === `deact_dept_${d.id}` ? 'Deactivating...' : 'Deactivate'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={actionLoading === `react_dept_${d.id}`}
+                              onClick={() => handleReactivateDept(d.id)}
+                              className="text-emerald-600 hover:text-emerald-800 font-bold underline cursor-pointer"
+                            >
+                              {actionLoading === `react_dept_${d.id}` ? 'Reactivating...' : 'Reactivate Department'}
                             </button>
                           </div>
                         )}
@@ -744,7 +820,7 @@ export function SuperAdminDashboard() {
                             <Badge variant="danger" className="text-[10px]">Deactivated</Badge>
                           )}
                         </div>
-                        {c.isActive && (
+                        {c.isActive ? (
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -753,17 +829,29 @@ export function SuperAdminDashboard() {
                                 setEditCatName(c.name);
                                 setEditCatDesc(c.description);
                               }}
-                              className="text-blue-600 hover:text-blue-800 font-medium underline"
+                              className="text-blue-600 hover:text-blue-800 font-medium underline cursor-pointer"
                             >
                               Edit
                             </button>
                             <span>|</span>
                             <button
                               type="button"
+                              disabled={actionLoading === `deact_cat_${c.id}`}
                               onClick={() => handleDeactivateCategory(c.id)}
-                              className="text-rose-600 hover:text-rose-800 font-medium underline"
+                              className="text-rose-600 hover:text-rose-800 font-medium underline cursor-pointer"
                             >
-                              Deactivate
+                              {actionLoading === `deact_cat_${c.id}` ? 'Deactivating...' : 'Deactivate'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={actionLoading === `react_cat_${c.id}`}
+                              onClick={() => handleReactivateCategory(c.id)}
+                              className="text-emerald-600 hover:text-emerald-800 font-bold underline cursor-pointer"
+                            >
+                              {actionLoading === `react_cat_${c.id}` ? 'Reactivating...' : 'Reactivate'}
                             </button>
                           </div>
                         )}
