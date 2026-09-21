@@ -25,6 +25,14 @@ Solidity Smart Contracts
 
 ---
 
+## Deployment & Testing Guides
+
+* 🚀 **[Ethereum Sepolia Deployment & Multi-Role Testing Guide](file:///d:/Grievense/SEPOLIA_DEPLOYMENT_GUIDE.md)**: Complete step-by-step instructions for deploying via Remix + MetaMask, configuring `.env`, wiring contracts, multi-account setup (4 roles), and running end-to-end lifecycle verification.
+* 🛠️ **[Remix IDE Deployment Reference](file:///d:/Grievense/REMIX_DEPLOYMENT.md)**: Technical reference for contract compilation settings and post-deployment wiring.
+
+
+---
+
 ## Planned Smart Contracts
 
 ### Contracts (`contracts/`)
