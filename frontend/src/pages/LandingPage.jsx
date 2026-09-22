@@ -141,7 +141,7 @@ export function LandingPage() {
   ];
 
   return (
-    <div className="space-y-16 sm:space-y-20">
+    <div className="space-y-10 sm:space-y-16 lg:space-y-20">
       {/* Wallet Error Alert */}
       {error && (
         <Alert variant="danger" title="Wallet Error" onClose={clearError}>
@@ -150,31 +150,31 @@ export function LandingPage() {
       )}
 
       {/* 1. HERO SECTION */}
-      <section className="text-center max-w-4xl mx-auto pt-4 sm:pt-8">
+      <section className="text-center max-w-4xl mx-auto pt-2 sm:pt-6">
         {/* Civic Trust Badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] sm:text-xs font-bold mb-4 sm:mb-6">
           <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
           <span>Official Republic Civic Administration Protocol</span>
         </div>
 
         {/* Headline */}
-        <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.12]">
+        <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-[1.18] sm:leading-[1.15]">
           Transparent Public Grievance Resolution,{' '}
           <span className="text-blue-600">Powered by Blockchain</span>
         </h1>
 
         {/* Supporting text */}
-        <p className="mt-5 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+        <p className="mt-3 sm:mt-5 text-sm sm:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
           Submit, track and verify public grievances through a tamper-evident decentralized system with transparent departmental accountability.
         </p>
 
         {/* Primary & Secondary CTAs */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+        <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-4">
           <Button
             onClick={() => navigate('/citizen/submit')}
             variant="primary"
             size="lg"
-            className="w-full sm:w-auto font-bold shadow-md hover:shadow-lg"
+            className="w-full sm:w-auto font-bold shadow-md hover:shadow-lg text-sm sm:text-base"
           >
             Submit a Grievance
           </Button>
@@ -183,7 +183,7 @@ export function LandingPage() {
             onClick={() => navigate('/citizen')}
             variant="secondary"
             size="lg"
-            className="w-full sm:w-auto font-bold"
+            className="w-full sm:w-auto font-bold text-sm sm:text-base"
           >
             Track a Grievance
           </Button>
@@ -199,34 +199,34 @@ export function LandingPage() {
         </div>
 
         {/* Subtle Visual Flow: Citizen → Department → Officer → Resolution */}
-        <div className="mt-12 p-3 sm:p-4 bg-white/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs max-w-2xl mx-auto">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+        <div className="mt-8 sm:mt-10 p-3 sm:p-4 bg-white/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs max-w-2xl mx-auto">
+          <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-between gap-2.5 text-xs font-semibold text-slate-700">
             <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
                 👤
               </span>
-              <span>Citizen</span>
+              <span>1. Citizen</span>
             </div>
-            <span className="text-slate-300 font-bold">→</span>
+            <span className="hidden sm:inline text-slate-300 font-bold">→</span>
             <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-bold">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
                 🏛️
               </span>
-              <span>Department</span>
+              <span>2. Department</span>
             </div>
-            <span className="text-slate-300 font-bold">→</span>
+            <span className="hidden sm:inline text-slate-300 font-bold">→</span>
             <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
                 👮
               </span>
-              <span>Officer</span>
+              <span>3. Officer</span>
             </div>
-            <span className="text-slate-300 font-bold">→</span>
+            <span className="hidden sm:inline text-slate-300 font-bold">→</span>
             <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
                 ✓
               </span>
-              <span>Resolution</span>
+              <span>4. Resolution</span>
             </div>
           </div>
         </div>
@@ -310,7 +310,7 @@ export function LandingPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 relative">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4 relative">
           {steps.map((item) => (
             <div
               key={item.step}
@@ -399,7 +399,7 @@ export function LandingPage() {
       </section>
 
       {/* 6. TRANSPARENCY SECTION: Why blockchain is used */}
-      <section className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-xl border border-slate-800">
+      <section className="bg-slate-900 text-white rounded-2xl sm:rounded-3xl p-5 sm:p-8 lg:p-12 shadow-xl border border-slate-800">
         <div className="max-w-3xl">
           <Badge variant="neutral" className="bg-slate-800 text-blue-300 border-slate-700 mb-3 font-bold">
             Public Trust & Integrity

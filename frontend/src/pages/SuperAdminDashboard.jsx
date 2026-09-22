@@ -1121,7 +1121,8 @@ export function SuperAdminDashboard() {
                 rel="noopener noreferrer"
                 className="font-mono font-semibold text-blue-700 hover:underline inline-flex items-center gap-1"
               >
-                {address}
+                <span className="sm:hidden">{shortenAddress(address, 6)}</span>
+                <span className="hidden sm:inline">{address}</span>
                 <span className="text-[10px]">↗</span>
               </a>
             </p>
@@ -1266,7 +1267,7 @@ export function SuperAdminDashboard() {
       {/* ===================================================================== */}
       {/* 2. NAVIGATION TABS                                                    */}
       {/* ===================================================================== */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200 no-scrollbar">
         {[
           { id: 'departments', label: `Departments & Admins (${departments.length})` },
           { id: 'grievances', label: `Global Grievances (${allGrievances.length})` },
@@ -1335,7 +1336,7 @@ export function SuperAdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[720px]">
                     <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                       <tr>
                         <th className="py-3 px-4">ID</th>
@@ -1626,7 +1627,7 @@ export function SuperAdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[760px]">
                     <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                       <tr>
                         <th className="py-3 px-3">ID</th>
@@ -1810,7 +1811,7 @@ export function SuperAdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[640px]">
                     <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                       <tr>
                         <th className="py-3 px-4">Officer Wallet</th>
@@ -1929,7 +1930,7 @@ export function SuperAdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[640px]">
                     <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                       <tr>
                         <th className="py-3 px-4">ID</th>
@@ -2030,7 +2031,7 @@ export function SuperAdminDashboard() {
             subtitle="Operational resolution compliance monitored across departments"
           >
             <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[700px]">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                   <tr>
                     <th className="py-3 px-4">Department</th>
@@ -2268,7 +2269,7 @@ export function SuperAdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[640px]">
                     <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                       <tr>
                         <th className="py-2.5 px-3">#</th>

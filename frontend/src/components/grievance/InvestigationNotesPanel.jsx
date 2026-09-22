@@ -210,9 +210,9 @@ export function InvestigationNotesPanel({
                   )}
                 </div>
 
-                <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                  <span>CID: {n.noteCid}</span>
-                  <span>Hash: {n.noteHash?.slice(0, 16)}...</span>
+                <div className="pt-1.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-400 font-mono">
+                  <span className="break-all">CID: {n.noteCid}</span>
+                  <span className="shrink-0">Hash: {n.noteHash?.slice(0, 16)}...</span>
                 </div>
               </div>
             ))}

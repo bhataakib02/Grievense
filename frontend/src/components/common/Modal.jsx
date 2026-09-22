@@ -29,7 +29,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto"
       role="dialog"
       aria-modal="true"
     >
@@ -42,20 +42,20 @@ export function Modal({
 
       {/* Modal Card */}
       <div
-        className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden z-10 animate-modal my-8 text-left`}
+        className={`relative w-full max-w-[calc(100vw-1.5rem)] sm:max-w-lg md:${maxWidth} max-h-[calc(100vh-2rem)] flex flex-col bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden z-10 animate-modal my-auto sm:my-8 text-left`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         {(title || subtitle) && (
-          <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/50">
-            <div>
+          <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-start justify-between gap-3 bg-slate-50/70 shrink-0">
+            <div className="min-w-0 flex-1">
               {title && (
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                <h3 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 leading-snug break-words">
                   {title}
                 </h3>
               )}
               {subtitle && (
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-relaxed break-words">
                   {subtitle}
                 </p>
               )}
@@ -76,13 +76,13 @@ export function Modal({
         )}
 
         {/* Content Body */}
-        <div className="px-6 py-5 max-h-[calc(85vh-140px)] overflow-y-auto">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1 text-xs sm:text-sm">
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2.5">
+          <div className="px-4 sm:px-6 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2 shrink-0">
             {footer}
           </div>
         )}

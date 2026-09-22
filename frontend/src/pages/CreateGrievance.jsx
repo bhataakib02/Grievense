@@ -347,14 +347,14 @@ export function CreateGrievance() {
         </div>
 
         {/* 3-Step Guided Civic Flow Indicator */}
-        <div className="grid grid-cols-3 gap-2 pt-6 text-center text-xs">
-          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-6 text-center text-[11px] sm:text-xs">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
             1. Classification
           </div>
-          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
             2. Complaint Statement
           </div>
-          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 font-bold">
             3. On-Chain Commit
           </div>
         </div>
@@ -592,7 +592,7 @@ export function CreateGrievance() {
               </span>
             )}
             {evidenceInfo && (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-1 text-emerald-950 font-mono text-[11px]">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-1 text-emerald-950 font-mono text-[11px] break-all">
                 <div>File: <strong className="font-sans">{evidenceInfo.name}</strong></div>
                 <div>IPFS CID: {evidenceInfo.cid}</div>
                 <div>SHA-256 Hash: {evidenceInfo.hash}</div>

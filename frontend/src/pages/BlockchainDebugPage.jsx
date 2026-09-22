@@ -186,8 +186,8 @@ export function BlockchainDebugPage() {
         title="Smart Contract Bytecode Verification Matrix"
         subtitle="Confirms that smart contracts are deployed and have non-empty bytecode on Ethereum Sepolia"
       >
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-xs font-sans">
+        <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+          <table className="w-full min-w-[640px] divide-y divide-slate-200 text-xs font-sans">
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Contract Name</th>

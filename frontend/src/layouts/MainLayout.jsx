@@ -12,10 +12,10 @@ export function MainLayout({ children }) {
   const isDashboardRoute = currentRoute !== '/' && !currentRoute.startsWith('/unauthorized');
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 overflow-x-hidden w-full max-w-[100vw]">
       <Header />
       {isConnected && activeRoles.length > 0 && isDashboardRoute && <RoleNavigation />}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 lg:py-10">
         {children}
       </main>
       <Footer />

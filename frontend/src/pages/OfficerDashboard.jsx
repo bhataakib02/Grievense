@@ -241,7 +241,10 @@ export function OfficerDashboard() {
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
               Field Officer:{' '}
-              <span className="font-mono font-semibold text-slate-800">{address}</span>
+              <span className="font-mono font-semibold text-slate-800">
+                <span className="sm:hidden">{shortenAddress(address, 6)}</span>
+                <span className="hidden sm:inline">{address}</span>
+              </span>
             </p>
           </div>
 
@@ -377,7 +380,7 @@ export function OfficerDashboard() {
         <div className="space-y-4">
           {/* Filter Bar & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
               {[
                 { id: 'all', label: `All (${stats.total})` },
                 { id: 'new_review', label: `New / Review (${stats.newReview})` },
@@ -419,7 +422,7 @@ export function OfficerDashboard() {
             </div>
           ) : filteredCases.length > 0 ? (
             <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[720px]">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                   <tr>
                     <th className="py-3 px-4">ID</th>

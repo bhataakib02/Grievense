@@ -390,7 +390,7 @@ export function GrievanceDetails({ grievanceId }) {
         </div>
 
         {/* Essential Case Metadata Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-6 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 pt-6 text-xs">
           <div>
             <span className="text-slate-400 block font-medium">Department</span>
             <span className="font-bold text-slate-900 text-sm mt-0.5 block">
@@ -448,7 +448,7 @@ export function GrievanceDetails({ grievanceId }) {
         </div>
 
         {/* Stepper Bar */}
-        <div className="overflow-x-auto pb-2">
+        <div className="overflow-x-auto pb-2 no-scrollbar">
           <div className="min-w-[620px] flex items-center justify-between relative">
             {lifecycleSteps.map((step, idx) => {
               const isPast = idx < currentStageIndex;

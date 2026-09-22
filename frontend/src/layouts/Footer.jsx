@@ -6,33 +6,33 @@ export function Footer() {
 
   return (
     <footer className="mt-auto border-t border-slate-200/90 bg-white text-slate-600 text-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-10 border-b border-slate-100">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 pb-4 sm:pb-5 border-b border-slate-100">
           {/* Brand Info */}
-          <div className="md:col-span-2 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
                 🏛️
               </div>
-              <span className="font-extrabold text-sm text-slate-900 tracking-tight">
+              <span className="font-extrabold text-xs sm:text-sm text-slate-900 tracking-tight">
                 Public Grievance Tracking System
               </span>
             </div>
-            <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-              A decentralized civic technology protocol on Ethereum Sepolia ensuring tamper-evident record keeping, deterministic SLA escalations, and cryptographically verified public departmental accountability.
+            <p className="text-[11px] sm:text-xs text-slate-500 max-w-md leading-relaxed">
+              A decentralized civic technology protocol on Ethereum Sepolia ensuring tamper-evident record keeping, deterministic SLA escalations, and cryptographically verified departmental accountability.
             </p>
-            <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400">
+            <div className="flex items-center gap-2 pt-0.5 text-[11px] text-slate-400 font-mono">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Network: Ethereum Sepolia (Chain ID 11155111)</span>
+              <span>Ethereum Sepolia (Chain ID 11155111)</span>
             </div>
           </div>
 
           {/* Quick Navigation */}
           <div>
-            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3">
+            <h4 className="font-bold text-slate-900 text-[11px] uppercase tracking-wider mb-2">
               Citizen Services
             </h4>
-            <ul className="space-y-2 text-xs">
+            <ul className="space-y-1.5 text-[11px]">
               <li>
                 <button
                   type="button"
@@ -74,10 +74,10 @@ export function Footer() {
 
           {/* System & Protocols */}
           <div>
-            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3">
+            <h4 className="font-bold text-slate-900 text-[11px] uppercase tracking-wider mb-2">
               Protocol Governance
             </h4>
-            <ul className="space-y-2 text-xs">
+            <ul className="space-y-1.5 text-[11px]">
               <li>
                 <button
                   type="button"
@@ -103,16 +103,16 @@ export function Footer() {
                 <span className="text-slate-400">Solidity 0.8.28 • Ethers.js v6</span>
               </li>
               <li>
-                <span className="text-slate-400">IPFS Forensic Hashing (Keccak-256)</span>
+                <span className="text-slate-400">IPFS Forensic Hashing</span>
               </li>
             </ul>
           </div>
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-400">
+        <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] text-slate-400">
           <p>© {new Date().getFullYear()} Republic Public Administration. Non-custodial Web3 smart contracts.</p>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="text-slate-500">Zero Centralized Intermediaries</span>
             <span>•</span>
             <span className="text-slate-500">Immutable Audit Trail</span>

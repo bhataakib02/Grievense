@@ -613,10 +613,10 @@ export function DepartmentAdminDashboard() {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
       {/* Department Admin Banner */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-4 sm:p-6 lg:p-8 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 pb-5 sm:pb-6 border-b border-slate-100">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Badge variant="primary" dot className="font-bold text-xs uppercase">
@@ -626,7 +626,7 @@ export function DepartmentAdminDashboard() {
                 Ethereum Sepolia ({chainId})
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
               {selectedDept ? selectedDept.name : 'Department Operations & Triage'}
             </h1>
             <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs sm:text-sm text-slate-600">
@@ -636,16 +636,19 @@ export function DepartmentAdminDashboard() {
                   <span className="font-mono font-bold text-slate-900">#{selectedDept.id}</span>
                 </span>
               )}
-              <span>
+              <span className="break-all sm:break-normal">
                 Department Administrator:{' '}
-                <span className="font-mono font-semibold text-slate-800">{address}</span>
+                <span className="font-mono font-semibold text-slate-800">
+                  <span className="sm:hidden">{shortenAddress(address, 6)}</span>
+                  <span className="hidden sm:inline">{address}</span>
+                </span>
               </span>
             </div>
           </div>
 
           {/* Department Selector for Multiple Departments */}
           {departments.length > 1 && (
-            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 p-2 rounded-2xl">
+            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 p-2 rounded-2xl shrink-0">
               <span className="text-xs font-bold text-slate-600">Department:</span>
               <select
                 value={selectedDeptId || ''}
@@ -663,64 +666,64 @@ export function DepartmentAdminDashboard() {
         </div>
 
         {/* Overview Metric Cards (Department-Wide Counts) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 pt-6 text-xs">
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Total Grievances</span>
-            <span className="text-xl font-bold text-slate-900 mt-1 block">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5 pt-5 sm:pt-6 text-xs">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Total Grievances</span>
+            <span className="text-lg sm:text-xl font-bold text-slate-900 mt-1 block">
               {totalGrievanceCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Pending Triage</span>
-            <span className="text-xl font-bold text-blue-600 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Pending Triage</span>
+            <span className="text-lg sm:text-xl font-bold text-blue-600 mt-1 block">
               {pendingCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Investigating</span>
-            <span className="text-xl font-bold text-indigo-600 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Investigating</span>
+            <span className="text-lg sm:text-xl font-bold text-indigo-600 mt-1 block">
               {investigatingCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Resolutions</span>
-            <span className="text-xl font-bold text-amber-600 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Resolutions</span>
+            <span className="text-lg sm:text-xl font-bold text-amber-600 mt-1 block">
               {resolutionsCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Resolved</span>
-            <span className="text-xl font-bold text-emerald-600 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Resolved</span>
+            <span className="text-lg sm:text-xl font-bold text-emerald-600 mt-1 block">
               {resolvedCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Closed Cases</span>
-            <span className="text-xl font-bold text-slate-700 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Closed Cases</span>
+            <span className="text-lg sm:text-xl font-bold text-slate-700 mt-1 block">
               {closedCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Rejected</span>
-            <span className="text-xl font-bold text-rose-600 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Rejected</span>
+            <span className="text-lg sm:text-xl font-bold text-rose-600 mt-1 block">
               {rejectedCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">SLA Escalations</span>
-            <span className={`text-xl font-bold mt-1 block ${escalatedCount > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">SLA Escalations</span>
+            <span className={`text-lg sm:text-xl font-bold mt-1 block ${escalatedCount > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
               {escalatedCount}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Active Officers</span>
-            <span className="text-xl font-bold text-slate-900 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Active Officers</span>
+            <span className="text-lg sm:text-xl font-bold text-slate-900 mt-1 block">
               {deptOfficers.length}
             </span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <span className="text-slate-500 block font-medium">Categories</span>
-            <span className="text-xl font-bold text-slate-900 mt-1 block">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+            <span className="text-slate-500 block font-medium truncate">Categories</span>
+            <span className="text-lg sm:text-xl font-bold text-slate-900 mt-1 block">
               {deptCategories.length}
             </span>
           </div>
@@ -765,7 +768,7 @@ export function DepartmentAdminDashboard() {
       )}
 
       {/* Section Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 border-b border-slate-200">
         {[
           { id: 'all_cases', label: `Department Grievance History (${totalGrievanceCount})` },
           { id: 'triage', label: `Pending Triage (${pendingCount})` },
@@ -778,7 +781,7 @@ export function DepartmentAdminDashboard() {
           <button
             key={tab.id}
             onClick={() => setActiveSection(tab.id)}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+            className={`px-3.5 sm:px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer shrink-0 ${
               activeSection === tab.id
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -914,8 +917,8 @@ export function DepartmentAdminDashboard() {
                   No grievances found matching the selected filter.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+                  <table className="w-full text-left text-xs min-w-[760px]">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
                       <tr>
                         <th className="py-3 px-4">ID</th>
@@ -1150,7 +1153,7 @@ export function DepartmentAdminDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[640px]">
                   <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                     <tr>
                       <th className="py-3 px-4">ID</th>
@@ -1404,7 +1407,7 @@ export function DepartmentAdminDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[560px]">
                   <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                     <tr>
                       <th className="py-3 px-4">Officer Address</th>
@@ -1550,8 +1553,8 @@ export function DepartmentAdminDashboard() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+                <table className="w-full text-left text-xs min-w-[640px]">
                   <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
                     <tr>
                       <th className="py-3 px-4">ID</th>
@@ -1664,7 +1667,7 @@ export function DepartmentAdminDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[640px]">
                   <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
                     <tr>
                       <th className="py-3 px-4">Audit ID</th>

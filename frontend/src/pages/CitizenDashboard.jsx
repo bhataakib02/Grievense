@@ -239,7 +239,10 @@ export function CitizenDashboard() {
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
               Connected Account:{' '}
-              <span className="font-mono font-semibold text-slate-800">{address}</span>
+              <span className="font-mono font-semibold text-slate-800">
+                <span className="sm:hidden">{shortenAddress(address, 6)}</span>
+                <span className="hidden sm:inline">{address}</span>
+              </span>
             </p>
           </div>
 
@@ -273,7 +276,7 @@ export function CitizenDashboard() {
         </div>
 
         {/* 9 Metric Cards (Section 9) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2 pt-6 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 pt-6 text-xs">
           <div
             onClick={() => setStatusFilter('all')}
             className={`p-3 rounded-2xl border transition-all cursor-pointer ${
@@ -410,7 +413,7 @@ export function CitizenDashboard() {
         <div className="space-y-4">
           {/* Filter Bar & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
               {[
                 { id: 'all', label: `All (${stats.total})` },
                 { id: 'pending', label: `Pending (${stats.pending})` },
@@ -454,7 +457,7 @@ export function CitizenDashboard() {
             </div>
           ) : filteredGrievances.length > 0 ? (
             <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[700px]">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                   <tr>
                     <th className="py-3 px-4">ID</th>
