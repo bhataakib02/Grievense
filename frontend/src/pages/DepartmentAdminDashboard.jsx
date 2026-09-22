@@ -26,6 +26,7 @@ import {
   removeOfficerFromDepartment,
   transferOfficerDepartment,
   fetchDepartmentCategories,
+  getAdminDepartments,
   createCategory,
   updateCategory,
   deactivateCategory,
@@ -140,9 +141,23 @@ export function DepartmentAdminDashboard() {
 
       let adminDepts = all;
       if (currentRole !== ROLES.SUPER_ADMIN && address) {
-        adminDepts = all.filter(
-          (d) => d.admin && d.admin.toLowerCase() === address.toLowerCase()
-        );
+        try {
+          const directIds = await getAdminDepartments(runner, address);
+          if (directIds.length > 0) {
+            const idSet = new Set(directIds.map(Number));
+            adminDepts = all.filter(
+              (d) => idSet.has(Number(d.id)) || (d.admin && d.admin.toLowerCase() === address.toLowerCase())
+            );
+          } else {
+            adminDepts = all.filter(
+              (d) => d.admin && d.admin.toLowerCase() === address.toLowerCase()
+            );
+          }
+        } catch {
+          adminDepts = all.filter(
+            (d) => d.admin && d.admin.toLowerCase() === address.toLowerCase()
+          );
+        }
       }
 
       setDepartments(adminDepts);

@@ -27,6 +27,7 @@ import {
   fetchAllCategories,
   fetchDepartmentOfficers,
   fetchEligibleDepartmentAdmins,
+  validateDepartmentCreationPreflight,
 } from '../services/departmentService';
 import { getRoleManagerContract } from '../services/blockchain';
 
@@ -766,6 +767,19 @@ export function SuperAdminDashboard() {
       setError('Selected wallet must have DEPARTMENT_ADMIN_ROLE before department creation.');
       return;
     }
+
+    // Run read-only preflight simulation
+    const preflight = await validateDepartmentCreationPreflight(runner, {
+      callerAddress: address,
+      chainId,
+      name: newDeptName.trim(),
+      adminAddress: newDeptAdmin.trim(),
+    });
+    if (!preflight.valid) {
+      setError(preflight.error);
+      return;
+    }
+
     await executeTx('Create Department', async () => {
       setTxStatus((prev) => ({ ...prev, state: 'mining', message: 'Deploying department on-chain...' }));
       return await createDepartment(signer, newDeptName.trim(), newDeptAdmin.trim());

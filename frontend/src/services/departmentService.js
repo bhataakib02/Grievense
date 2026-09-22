@@ -79,17 +79,24 @@ export function parseDepartmentError(err, contract = null) {
   const errReason = String(err?.reason || '');
   const fullErrText = `${errReason} ${errShort} ${errMsg} ${customErrorName || ''}`.toLowerCase();
 
-  // 1. Intercept "missing revert data" with exact root cause explanation
+  // 1. Intercept "missing revert data" with context-sensitive explanation
   if (
     errShort.includes('missing revert data') ||
     errMsg.includes('missing revert data') ||
     (err?.code === 'CALL_EXCEPTION' && (!rawData || rawData === '0x'))
   ) {
+    const actionTarget = String(err?.action || err?.invocation?.method || err?.info?.method || '');
+    if (actionTarget.includes('createCategory') || fullErrText.includes('createcategory')) {
+      return (
+        'Contract call failed ("missing revert data"). ' +
+        'Root Cause: The deployed DepartmentManager on Sepolia (0xAE3F7f5886BFFE5850F240fc3D79218423b0ee74) ' +
+        'does not contain the department-scoped createCategory(uint256,string,string) function (selector 0x2850beda). ' +
+        'DepartmentManager must be redeployed to Sepolia to enable Department Admin category creation.'
+      );
+    }
     return (
-      'Contract call failed ("missing revert data"). ' +
-      'Root Cause: The deployed DepartmentManager on Sepolia (0xAE3F7f5886BFFE5850F240fc3D79218423b0ee74) ' +
-      'does not contain the department-scoped createCategory(uint256,string,string) function (selector 0x2850beda). ' +
-      'DepartmentManager must be redeployed to Sepolia to enable Department Admin category creation.'
+      'Transaction reverted with "missing revert data". ' +
+      'Root Cause: The transaction was rejected on-chain without error payload (e.g. caller lacks required permissions, gas estimation failed, or target function selector is not implemented in the deployed contract).'
     );
   }
 
@@ -331,7 +338,8 @@ export async function createDepartment(signer, name, adminAddress) {
   let contract;
   try {
     contract = getDepartmentManagerContract(signer);
-    const tx = await contract.createDepartment(name.trim(), adminAddress);
+    const normalizedAdmin = ethers.getAddress(adminAddress.trim());
+    const tx = await contract.createDepartment(name.trim(), normalizedAdmin);
     return await tx.wait();
   } catch (err) {
     throw new Error(parseDepartmentError(err, contract));
@@ -738,5 +746,102 @@ export async function validateCategoryCreationPreflight(runner, {
   } catch (err) {
     return { valid: false, error: `Pre-flight validation check failed: ${err.message}` };
   }
+}
+
+/**
+ * Performs read-only pre-flight validation before creating a department.
+ * Validates:
+ * 1. Current wallet connected
+ * 2. Target network / Chain ID (Ethereum Sepolia: 11155111)
+ * 3. Department name validity
+ * 4. Administrator address format & checksum
+ * 5. Caller has SUPER_ADMIN role on RoleManager
+ * 6. Target administrator has DEPARTMENT_ADMIN_ROLE on RoleManager
+ * 7. Contract staticCall simulation
+ */
+export async function validateDepartmentCreationPreflight(runner, {
+  callerAddress,
+  chainId,
+  name,
+  adminAddress
+}) {
+  // 1. Current wallet
+  if (!callerAddress || callerAddress === ethers.ZeroAddress) {
+    return { valid: false, error: 'No wallet connected. Please connect MetaMask.' };
+  }
+
+  // 2. Chain ID
+  const expectedChainId = 11155111;
+  if (chainId && Number(chainId) !== expectedChainId) {
+    return {
+      valid: false,
+      error: `Incorrect network (Chain ID: ${chainId}). Please switch MetaMask to Ethereum Sepolia (Chain ID: ${expectedChainId}).`
+    };
+  }
+
+  // 3. Name check
+  if (!name || !name.trim()) {
+    return { valid: false, error: 'Department name cannot be empty.' };
+  }
+  if (name.trim().length > 100) {
+    return { valid: false, error: 'Department name exceeds maximum length (100 characters).' };
+  }
+
+  // 4. Admin address check
+  if (!adminAddress || !ethers.isAddress(adminAddress.trim())) {
+    return { valid: false, error: 'A valid 42-character Ethereum address (0x...) is required for Department Admin.' };
+  }
+
+  let checksummedAdmin;
+  try {
+    checksummedAdmin = ethers.getAddress(adminAddress.trim());
+  } catch {
+    return { valid: false, error: 'Invalid Ethereum address format.' };
+  }
+
+  if (checksummedAdmin === ethers.ZeroAddress) {
+    return { valid: false, error: 'Zero address (0x00...00) cannot be assigned as Department Admin.' };
+  }
+
+  if (!runner || !isContractConfigured('DepartmentManager') || !isContractConfigured('RoleManager')) {
+    return { valid: false, error: 'System contracts are not configured in environment.' };
+  }
+
+  // 5. Verify Super Admin role
+  try {
+    const roleContract = getRoleManagerContract(runner);
+    const isSuperAdmin = await roleContract.isSuperAdmin(callerAddress);
+    if (!isSuperAdmin) {
+      return {
+        valid: false,
+        error: `Caller (${callerAddress.slice(0, 6)}...${callerAddress.slice(-4)}) lacks SUPER_ADMIN role. Only Super Admin can create departments.`
+      };
+    }
+
+    // 6. Verify Department Admin role of candidate
+    const isDeptAdmin = await roleContract.isDepartmentAdmin(checksummedAdmin);
+    if (!isDeptAdmin) {
+      return {
+        valid: false,
+        error: `Selected wallet (${checksummedAdmin.slice(0, 6)}...${checksummedAdmin.slice(-4)}) does not have the DEPARTMENT_ADMIN_ROLE in RoleManager. Please grant the role first.`
+      };
+    }
+  } catch (err) {
+    return { valid: false, error: `Role verification failed: ${err.message}` };
+  }
+
+  // 7. On-chain simulation
+  try {
+    const deptContract = getDepartmentManagerContract(runner);
+    await deptContract.createDepartment.staticCall(name.trim(), checksummedAdmin, { from: callerAddress });
+  } catch (simErr) {
+    const deptContract = getDepartmentManagerContract(runner);
+    return {
+      valid: false,
+      error: `Department creation pre-flight simulation failed: ${parseDepartmentError(simErr, deptContract)}`
+    };
+  }
+
+  return { valid: true };
 }
 
