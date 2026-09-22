@@ -99,8 +99,17 @@ for (const [sourceFile, contracts] of Object.entries(output.contracts)) {
         path.join(buildDir, `${contractName}.json`),
         JSON.stringify(artifacts[contractName], null, 2)
       );
+
+      // Also sync ABI directly to frontend if directory exists
+      const frontendAbisDir = path.join(__dirname, "..", "frontend", "src", "contracts", "abis");
+      if (fs.existsSync(frontendAbisDir)) {
+        fs.writeFileSync(
+          path.join(frontendAbisDir, `${contractName}.json`),
+          JSON.stringify(data.abi, null, 2)
+        );
+      }
     }
   }
 }
 
-console.log("\nArtifacts saved to build/ directory.");
+console.log("\nArtifacts saved to build/ and frontend/src/contracts/abis/ directories.");

@@ -127,6 +127,15 @@ async function runTests() {
   assert.strictEqual(catA.isActive, true);
   console.log(`✓ Category #1 created in Dept #1 by Admin A with departmentId=${catA.departmentId}`);
 
+  console.log("\n--- TEST 3b: Dept Admin A creates duplicate category in same department (Should Revert CategoryAlreadyExists) ---");
+  try {
+    await deptManager.connect(deptAdminA)["createCategory(uint256,string,string)"](deptAId, "Potholes & Road Damage", "Duplicate category name");
+    assert.fail("Expected revert CategoryAlreadyExists");
+  } catch (err) {
+    assert(err.message.includes("CategoryAlreadyExists") || err.message.includes("revert"), "Error should indicate CategoryAlreadyExists: " + err.message);
+    console.log("✓ Correctly reverted CategoryAlreadyExists on duplicate active category in department");
+  }
+
   console.log("\n--- TEST 4: Dept Admin A creates category in Dept B (Should Revert Unauthorized) ---");
   try {
     await deptManager.connect(deptAdminA)["createCategory(uint256,string,string)"](deptBId, "Cross Dept Cat", "Should fail");

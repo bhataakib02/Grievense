@@ -128,6 +128,10 @@ export function parseDepartmentError(err, contract = null) {
   if (customErrorName === 'CategoryNotFound' || fullErrText.includes('categorynotfound')) {
     return 'Category not found on-chain.';
   }
+  if (customErrorName === 'CategoryAlreadyExists' || fullErrText.includes('categoryalreadyexists')) {
+    const catName = customArgs && customArgs[0] ? ` "${customArgs[0]}"` : '';
+    return `A category with the name${catName} already exists in this department.`;
+  }
   if (customErrorName === 'CategoryNotActive' || fullErrText.includes('categorynotactive')) {
     return 'This category is currently deactivated.';
   }

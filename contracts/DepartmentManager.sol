@@ -18,6 +18,7 @@ import {
     EmptyString,
     DepartmentAlreadyActive,
     CategoryAlreadyActive,
+    CategoryAlreadyExists,
     DepartmentAdminNotAssigned
 } from "./GrievanceTypes.sol";
 
@@ -669,6 +670,16 @@ contract DepartmentManager {
         _requireDepartmentExists(departmentId);
         _requireDepartmentActive(departmentId);
         if (bytes(name).length == 0) revert EmptyString("name");
+
+        // Deterministic duplicate check: prevent active duplicate category name in the same department
+        uint256[] storage deptCatIds = _departmentCategories[departmentId];
+        bytes32 nameHash = keccak256(bytes(name));
+        for (uint256 i = 0; i < deptCatIds.length; i++) {
+            uint256 cId = deptCatIds[i];
+            if (_categories[cId].isActive && keccak256(bytes(_categories[cId].name)) == nameHash) {
+                revert CategoryAlreadyExists(name);
+            }
+        }
 
         categoryId = _nextCategoryId++;
         uint64 now_ = uint64(block.timestamp);

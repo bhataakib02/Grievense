@@ -348,6 +348,9 @@ error CategoryNotFound(uint256 categoryId);
 /// @notice The category is deactivated and cannot be used for new grievances.
 error CategoryNotActive(uint256 categoryId);
 
+/// @notice A category with this name already exists in this department.
+error CategoryAlreadyExists(string name);
+
 // --- Department Errors ---
 /// @notice Referenced department does not exist.
 error DepartmentNotFound(uint256 departmentId);
