@@ -30,6 +30,7 @@ import {
   updateCategory,
   deactivateCategory,
   reactivateCategory,
+  validateCategoryCreationPreflight,
 } from '../services/departmentService';
 import { grantOfficerRole } from '../services/adminRoleService';
 import { fetchUserRoles } from '../services/roleService';
@@ -106,6 +107,7 @@ export function DepartmentAdminDashboard() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [categoryName, setCategoryName] = useState('');
   const [categoryDesc, setCategoryDesc] = useState('');
+  const [categorySuccessDetails, setCategorySuccessDetails] = useState(null);
 
   const runner = provider || signer;
 
@@ -123,6 +125,7 @@ export function DepartmentAdminDashboard() {
     setSelectedPriorityFilter('');
     setError(null);
     setSuccessMsg('');
+    setCategorySuccessDetails(null);
     setTxStatus({ phase: '', message: '' });
   }, [address, chainId]);
 
@@ -1450,6 +1453,50 @@ export function DepartmentAdminDashboard() {
       {/* 5. CATEGORIES SECTION */}
       {activeSection === 'categories' && (
         <div className="space-y-6 animate-fade-in">
+          {categorySuccessDetails && (
+            <div className="p-5 bg-emerald-50 border border-emerald-200/90 rounded-2xl space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">✓</span>
+                  Category created successfully.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategorySuccessDetails(null)}
+                  className="text-xs text-emerald-700 hover:text-emerald-900 font-bold cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-emerald-800">
+                {categorySuccessDetails.id && (
+                  <div>
+                    <span className="font-semibold text-emerald-950">Category ID:</span> #{categorySuccessDetails.id}
+                  </div>
+                )}
+                <div>
+                  <span className="font-semibold text-emerald-950">Category Name:</span> {categorySuccessDetails.name}
+                </div>
+                <div>
+                  <span className="font-semibold text-emerald-950">Department:</span> {categorySuccessDetails.department} (#{categorySuccessDetails.departmentId})
+                </div>
+                {categorySuccessDetails.txHash && (
+                  <div className="sm:col-span-2 font-mono text-[11px] pt-1 border-t border-emerald-200/60">
+                    <span className="font-sans font-semibold text-emerald-950">Transaction Hash: </span>
+                    <a
+                      href={`https://sepolia.etherscan.io/tx/${categorySuccessDetails.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 hover:text-emerald-950 underline font-bold"
+                    >
+                      {categorySuccessDetails.txHash} ↗ (Sepolia Etherscan)
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <Card
             title="Department Grievance Categories"
             subtitle={`Manage authoritative categories for ${selectedDept?.name || 'this department'}`}
@@ -1461,6 +1508,7 @@ export function DepartmentAdminDashboard() {
                   setEditingCategory(null);
                   setCategoryName('');
                   setCategoryDesc('');
+                  setError(null);
                   setShowCategoryModal(true);
                 }}
                 className="font-bold flex items-center gap-1.5"
@@ -2154,9 +2202,16 @@ export function DepartmentAdminDashboard() {
       {/* Add / Edit Category Modal */}
       <Modal
         isOpen={showCategoryModal}
-        onClose={() => setShowCategoryModal(false)}
-        title={editingCategory ? `Edit Category #${editingCategory.id}` : `Add Category to ${selectedDept?.name}`}
-        subtitle={editingCategory ? 'Update category name and coverage scope' : 'Create a new classification category for citizen intake'}
+        onClose={() => {
+          setShowCategoryModal(false);
+          setEditingCategory(null);
+        }}
+        title={editingCategory ? `Edit Category #${editingCategory.id}` : 'Create Department Category'}
+        subtitle={
+          editingCategory
+            ? 'Update category name and coverage scope'
+            : `Authoritative category for ${selectedDept?.name || 'Department'} (#${selectedDeptId})`
+        }
       >
         <form
           onSubmit={async (e) => {
@@ -2165,16 +2220,50 @@ export function DepartmentAdminDashboard() {
               setError('Category name is required.');
               return;
             }
+
             try {
               setActionLoading('save_category');
               setError(null);
               setSuccessMsg('');
+              setCategorySuccessDetails(null);
+
+              if (!editingCategory) {
+                // Pre-flight read-only validation check before triggering MetaMask
+                const preflight = await validateCategoryCreationPreflight(runner, {
+                  callerAddress: address,
+                  chainId,
+                  departmentId: selectedDeptId,
+                  categoryName: categoryName.trim(),
+                });
+
+                if (!preflight.valid) {
+                  setError(preflight.error);
+                  return;
+                }
+              }
+
               if (editingCategory) {
                 await updateCategory(signer, editingCategory.id, categoryName.trim(), categoryDesc.trim());
                 setSuccessMsg(`Category "${categoryName.trim()}" updated successfully.`);
               } else {
-                await createCategory(signer, selectedDeptId, categoryName.trim(), categoryDesc.trim());
-                setSuccessMsg(`Category "${categoryName.trim()}" created successfully for this department.`);
+                const receipt = await createCategory(signer, selectedDeptId, categoryName.trim(), categoryDesc.trim());
+                
+                // Determine new category count / ID if available
+                let newCatId = null;
+                try {
+                  const depts = await fetchDepartmentCategories(runner, selectedDeptId);
+                  const matching = depts.find((c) => c.name.toLowerCase() === categoryName.trim().toLowerCase());
+                  if (matching) newCatId = matching.id;
+                } catch {}
+
+                setCategorySuccessDetails({
+                  id: newCatId,
+                  name: categoryName.trim(),
+                  department: selectedDept?.name || 'Public Works and Infrastructure',
+                  departmentId: selectedDeptId,
+                  txHash: receipt?.hash,
+                });
+                setSuccessMsg('Category created successfully.');
               }
               setShowCategoryModal(false);
               setEditingCategory(null);
@@ -2182,7 +2271,7 @@ export function DepartmentAdminDashboard() {
               setCategoryDesc('');
               await loadDeptData();
             } catch (err) {
-              setError(err.message || 'Category action failed.');
+              setError(err.message || 'Category creation failed.');
             } finally {
               setActionLoading('');
             }
@@ -2197,10 +2286,24 @@ export function DepartmentAdminDashboard() {
               type="text"
               readOnly
               disabled
-              value={`${selectedDept?.name || 'Department'} (#${selectedDeptId})`}
+              value={selectedDept?.name || 'Public Works and Infrastructure'}
               className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-700 font-semibold cursor-not-allowed outline-none"
             />
           </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Department ID
+            </label>
+            <input
+              type="text"
+              readOnly
+              disabled
+              value={`#${selectedDeptId || 1}`}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-700 font-mono font-semibold cursor-not-allowed outline-none"
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Category Name *
@@ -2208,15 +2311,16 @@ export function DepartmentAdminDashboard() {
             <input
               type="text"
               required
-              placeholder="e.g. Water Contamination, Road Damage"
+              placeholder="e.g. Road Maintenance, Water Contamination"
               value={categoryName}
               onChange={(e) => setCategoryName(e.target.value)}
               className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none"
             />
           </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Description (Optional)
+              Description (optional)
             </label>
             <textarea
               rows={3}
@@ -2226,12 +2330,16 @@ export function DepartmentAdminDashboard() {
               className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none resize-none"
             />
           </div>
+
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => setShowCategoryModal(false)}
+              onClick={() => {
+                setShowCategoryModal(false);
+                setEditingCategory(null);
+              }}
             >
               Cancel
             </Button>

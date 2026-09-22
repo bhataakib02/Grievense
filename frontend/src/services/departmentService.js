@@ -5,78 +5,148 @@ import { ethers } from 'ethers';
 /**
  * Normalizes revert / error messages into user-friendly strings using contract interface error decoding.
  */
+const ABI_5_TUPLE = [
+  'function getCategory(uint256) view returns (tuple(uint256 id, string name, string description, bool isActive, uint256 createdAt))'
+];
+
+/**
+ * Safely fetches and decodes a category by ID from DepartmentManager,
+ * seamlessly supporting both the deployed 5-tuple contract (no departmentId field)
+ * and the updated 6-tuple contract (with departmentId field).
+ */
+export async function fetchCategorySafe(contract, id, runner) {
+  try {
+    const cat = await contract.getCategory(id);
+    return {
+      id: Number(cat.id),
+      departmentId: Number(cat.departmentId !== undefined ? cat.departmentId : 0),
+      name: cat.name,
+      description: cat.description,
+      isActive: Boolean(cat.isActive),
+      createdAt: Number(cat.createdAt),
+    };
+  } catch {
+    // Fallback to 5-tuple decoding for contracts deployed without departmentId field
+    try {
+      const targetAddress = contract.target || contract.address;
+      const c5 = new ethers.Contract(targetAddress, ABI_5_TUPLE, runner);
+      const cat = await c5.getCategory(id);
+      return {
+        id: Number(cat.id),
+        departmentId: 0,
+        name: cat.name,
+        description: cat.description,
+        isActive: Boolean(cat.isActive),
+        createdAt: Number(cat.createdAt),
+      };
+    } catch (fallbackErr) {
+      throw fallbackErr;
+    }
+  }
+}
+
+/**
+ * Normalizes revert / error messages into user-friendly strings using contract interface error decoding.
+ */
 export function parseDepartmentError(err, contract = null) {
   if (!err) return 'An unknown error occurred.';
 
   // Check direct revert name if already parsed by ethers v6
   let customErrorName = err?.revert?.name || null;
+  let customArgs = err?.revert?.args || null;
 
   // Try extracting hex data from error payload and parsing with contract interface
-  if (!customErrorName && contract?.interface) {
-    const rawData =
-      err?.data ||
-      err?.info?.error?.data ||
-      err?.error?.data ||
-      err?.payload?.params?.[0]?.data;
-    if (rawData && typeof rawData === 'string' && rawData.startsWith('0x')) {
+  const rawData =
+    err?.data ||
+    err?.info?.error?.data ||
+    err?.error?.data ||
+    err?.payload?.params?.[0]?.data;
+
+  if (!customErrorName && rawData && typeof rawData === 'string' && rawData.startsWith('0x')) {
+    if (contract?.interface) {
       try {
         const parsed = contract.interface.parseError(rawData);
-        if (parsed) customErrorName = parsed.name;
+        if (parsed) {
+          customErrorName = parsed.name;
+          customArgs = parsed.args;
+        }
       } catch {}
     }
   }
 
-  const errString = `${err?.reason || ''} ${err?.message || ''} ${customErrorName || ''}`;
+  const errShort = String(err?.shortMessage || '');
+  const errMsg = String(err?.message || '');
+  const errReason = String(err?.reason || '');
+  const fullErrText = `${errReason} ${errShort} ${errMsg} ${customErrorName || ''}`.toLowerCase();
 
-  if (customErrorName === 'NotADepartmentAdmin' || errString.includes('NotADepartmentAdmin')) {
-    return 'This wallet does not have the Department Admin role. Grant DEPARTMENT_ADMIN_ROLE first.';
+  // 1. Intercept "missing revert data" with exact root cause explanation
+  if (
+    errShort.includes('missing revert data') ||
+    errMsg.includes('missing revert data') ||
+    (err?.code === 'CALL_EXCEPTION' && (!rawData || rawData === '0x'))
+  ) {
+    return (
+      'Contract call failed ("missing revert data"). ' +
+      'Root Cause: The deployed DepartmentManager on Sepolia (0xAE3F7f5886BFFE5850F240fc3D79218423b0ee74) ' +
+      'does not contain the department-scoped createCategory(uint256,string,string) function (selector 0x2850beda). ' +
+      'DepartmentManager must be redeployed to Sepolia to enable Department Admin category creation.'
+    );
   }
-  if (customErrorName === 'Unauthorized' || errString.includes('Unauthorized')) {
-    return 'Unauthorized: You do not have permission for this department action.';
+
+  // 2. Unauthorized error handling
+  if (customErrorName === 'Unauthorized' || fullErrText.includes('unauthorized')) {
+    if (customArgs && customArgs.length >= 2) {
+      return `Unauthorized: Caller ${customArgs[0]} lacks permission for this action (${customArgs[1]}).`;
+    }
+    return 'Unauthorized: Caller lacks the required role (Super Admin or assigned Department Admin for this department).';
   }
-  if (customErrorName === 'DepartmentAlreadyActive' || errString.includes('DepartmentAlreadyActive')) {
+
+  // 3. User rejected in wallet
+  if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || fullErrText.includes('user rejected')) {
+    return 'Transaction was cancelled by user in MetaMask.';
+  }
+
+  if (customErrorName === 'NotADepartmentAdmin' || fullErrText.includes('notadepartmentadmin')) {
+    return 'This wallet does not have the Department Admin role. Grant DEPARTMENT_ADMIN_ROLE in RoleManager first.';
+  }
+  if (customErrorName === 'DepartmentAlreadyActive' || fullErrText.includes('departmentalreadyactive')) {
     return 'This department is already active.';
   }
-  if (customErrorName === 'DepartmentNotActive' || errString.includes('DepartmentNotActive')) {
+  if (customErrorName === 'DepartmentNotActive' || fullErrText.includes('departmentnotactive')) {
     return 'This department is currently deactivated.';
   }
-  if (customErrorName === 'DepartmentNotFound' || errString.includes('DepartmentNotFound')) {
-    return 'Department not found.';
+  if (customErrorName === 'DepartmentNotFound' || fullErrText.includes('departmentnotfound')) {
+    return 'Department not found on-chain.';
   }
-  if (customErrorName === 'CategoryNotFound' || errString.includes('CategoryNotFound')) {
-    return 'Category not found.';
+  if (customErrorName === 'CategoryNotFound' || fullErrText.includes('categorynotfound')) {
+    return 'Category not found on-chain.';
   }
-  if (customErrorName === 'CategoryNotActive' || errString.includes('CategoryNotActive')) {
+  if (customErrorName === 'CategoryNotActive' || fullErrText.includes('categorynotactive')) {
     return 'This category is currently deactivated.';
   }
-  if (customErrorName === 'CategoryAlreadyActive' || errString.includes('CategoryAlreadyActive')) {
+  if (customErrorName === 'CategoryAlreadyActive' || fullErrText.includes('categoryalreadyactive')) {
     return 'This category is already active.';
   }
-  if (customErrorName === 'CategoryNotInDepartment' || errString.includes('CategoryNotInDepartment')) {
+  if (customErrorName === 'CategoryNotInDepartment' || fullErrText.includes('categorynotindepartment')) {
     return 'This category does not belong to the selected department.';
   }
-  if (customErrorName === 'OfficerAlreadyInDepartment' || errString.includes('OfficerAlreadyInDepartment')) {
+  if (customErrorName === 'OfficerAlreadyInDepartment' || fullErrText.includes('officeralreadyindepartment')) {
     return 'This officer is already a member of this department.';
   }
-  if (customErrorName === 'OfficerNotInDepartment' || errString.includes('OfficerNotInDepartment')) {
+  if (customErrorName === 'OfficerNotInDepartment' || fullErrText.includes('officernotindepartment')) {
     return 'This officer is not assigned to this department.';
   }
-  if (customErrorName === 'NotAnOfficer' || errString.includes('NotAnOfficer')) {
-    return 'Target address does not hold the Officer role in the system.';
+  if (customErrorName === 'NotAnOfficer' || fullErrText.includes('notanofficer')) {
+    return 'Target address does not hold the Officer role in RoleManager.';
   }
-  if (customErrorName === 'EmptyString' || errString.includes('EmptyString')) {
-    return 'Name cannot be empty.';
+  if (customErrorName === 'EmptyString' || fullErrText.includes('emptystring')) {
+    return 'Required field cannot be empty.';
   }
-  if (customErrorName === 'ZeroAddressNotAllowed' || errString.includes('ZeroAddressNotAllowed')) {
+  if (customErrorName === 'ZeroAddressNotAllowed' || fullErrText.includes('zeroaddressnotallowed')) {
     return 'Zero address (0x00...00) is not allowed.';
   }
-  if (customErrorName === 'DepartmentAdminNotAssigned' || errString.includes('DepartmentAdminNotAssigned')) {
-    return 'No department admin is currently assigned to this department.';
-  }
-
-  // If user rejected in wallet
-  if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || (err?.message && err.message.includes('user rejected'))) {
-    return 'Transaction rejected by user in wallet.';
+  if (customErrorName === 'DepartmentAdminNotAssigned' || fullErrText.includes('departmentadminnotassigned')) {
+    return 'No Department Admin is currently assigned to this department.';
   }
 
   if (err?.shortMessage && !err.shortMessage.includes('unknown custom error')) {
@@ -201,23 +271,13 @@ export async function fetchAllCategories(runner) {
 
   const promises = [];
   for (let i = 1; i <= count; i++) {
-    promises.push(contract.getCategory(i));
+    promises.push(fetchCategorySafe(contract, i, runner));
   }
 
   const results = await Promise.allSettled(promises);
   return results
     .filter((r) => r.status === 'fulfilled')
-    .map((r) => {
-      const cat = r.value;
-      return {
-        id: Number(cat.id),
-        departmentId: Number(cat.departmentId || 0),
-        name: cat.name,
-        description: cat.description,
-        isActive: Boolean(cat.isActive),
-        createdAt: Number(cat.createdAt),
-      };
-    });
+    .map((r) => r.value);
 }
 
 /**
@@ -243,21 +303,11 @@ export async function fetchDepartmentCategories(runner, departmentId) {
     if (typeof contract.getDepartmentCategories === 'function') {
       const ids = await contract.getDepartmentCategories(departmentId);
       if (ids && ids.length > 0) {
-        const catPromises = ids.map((id) => contract.getCategory(id));
+        const catPromises = ids.map((id) => fetchCategorySafe(contract, id, runner));
         const results = await Promise.allSettled(catPromises);
         return results
           .filter((r) => r.status === 'fulfilled')
-          .map((r) => {
-            const cat = r.value;
-            return {
-              id: Number(cat.id),
-              departmentId: Number(cat.departmentId !== undefined ? cat.departmentId : departmentId),
-              name: cat.name,
-              description: cat.description,
-              isActive: Boolean(cat.isActive),
-              createdAt: Number(cat.createdAt),
-            };
-          });
+          .map((r) => r.value);
       } else if (ids && ids.length === 0) {
         return [];
       }
@@ -266,7 +316,8 @@ export async function fetchDepartmentCategories(runner, departmentId) {
     console.warn('getDepartmentCategories call failed, falling back to fetchAllCategories scan:', err);
   }
   const all = await fetchAllCategories(runner);
-  return all.filter((c) => Number(c.departmentId) === Number(departmentId));
+  // Match categories explicitly assigned to this department, or global legacy categories (departmentId = 0)
+  return all.filter((c) => Number(c.departmentId) === Number(departmentId) || Number(c.departmentId) === 0);
 }
 
 // ========================================================================
@@ -555,6 +606,137 @@ export async function getAdminDepartments(runner, adminAddress) {
     return depts.map((id) => Number(id));
   } catch {
     return [];
+  }
+}
+
+/**
+ * Performs read-only pre-flight validation before initiating a category creation transaction.
+ * Validates:
+ * 1. Current wallet connected
+ * 2. Target network / Chain ID (Ethereum Sepolia: 11155111)
+ * 3. Department ID validity
+ * 4. Department exists on-chain
+ * 5. Department is active
+ * 6. Department Admin assigned
+ * 7. Current wallet is assigned Department Admin or Super Admin
+ * 8. Category name input validation
+ * 9. Deployed contract capability check (verifies whether createCategory(uint256,string,string) is deployed)
+ */
+export async function validateCategoryCreationPreflight(runner, {
+  callerAddress,
+  chainId,
+  departmentId,
+  categoryName
+}) {
+  // 1. Current wallet
+  if (!callerAddress || callerAddress === ethers.ZeroAddress) {
+    return { valid: false, error: 'No wallet connected. Please connect MetaMask.' };
+  }
+
+  // 2. Current chain
+  const expectedChainId = 11155111;
+  if (chainId && Number(chainId) !== expectedChainId) {
+    return {
+      valid: false,
+      error: `Incorrect network (Chain ID: ${chainId}). Please switch MetaMask to Ethereum Sepolia (Chain ID: ${expectedChainId}).`
+    };
+  }
+
+  // 3. Department ID
+  const deptIdNum = Number(departmentId);
+  if (!deptIdNum || isNaN(deptIdNum) || deptIdNum <= 0) {
+    return { valid: false, error: 'Invalid department ID specified.' };
+  }
+
+  // 8. Category input valid
+  if (!categoryName || !categoryName.trim()) {
+    return { valid: false, error: 'Category name is required.' };
+  }
+  if (categoryName.trim().length > 100) {
+    return { valid: false, error: 'Category name exceeds maximum length (100 characters).' };
+  }
+
+  if (!runner || !isContractConfigured('DepartmentManager')) {
+    return { valid: false, error: 'DepartmentManager contract is not configured.' };
+  }
+
+  try {
+    const deptContract = getDepartmentManagerContract(runner);
+
+    // 4. Department exists & 5. Department active
+    let dept;
+    try {
+      dept = await deptContract.getDepartment(deptIdNum);
+    } catch {
+      return { valid: false, error: `Department #${deptIdNum} does not exist on-chain.` };
+    }
+
+    if (!dept || Number(dept.id) === 0) {
+      return { valid: false, error: `Department #${deptIdNum} does not exist on-chain.` };
+    }
+
+    if (!dept.isActive) {
+      return { valid: false, error: `Department #${deptIdNum} ("${dept.name}") is currently deactivated.` };
+    }
+
+    // 6. Department Admin assigned
+    if (!dept.admin || dept.admin === ethers.ZeroAddress) {
+      return { valid: false, error: `Department #${deptIdNum} has no assigned Department Admin.` };
+    }
+
+    // 7. Current wallet is Department Admin
+    const isAssignedAdmin = dept.admin.toLowerCase() === callerAddress.toLowerCase();
+    let isRoleAdmin = false;
+    let isAuthForDept = false;
+
+    if (isContractConfigured('RoleManager')) {
+      try {
+        const roleContract = getRoleManagerContract(runner);
+        const isSuperAdmin = await roleContract.isSuperAdmin(callerAddress);
+        if (isSuperAdmin) {
+          isRoleAdmin = true;
+          isAuthForDept = true;
+        } else {
+          isRoleAdmin = await roleContract.isDepartmentAdmin(callerAddress);
+          if (typeof deptContract.isDepartmentAdminFor === 'function') {
+            isAuthForDept = await deptContract.isDepartmentAdminFor(deptIdNum, callerAddress);
+          } else {
+            isAuthForDept = isAssignedAdmin && isRoleAdmin;
+          }
+        }
+      } catch (err) {
+        console.warn('Role verification warning during preflight:', err);
+      }
+    }
+
+    if (!isAssignedAdmin && !isAuthForDept) {
+      return {
+        valid: false,
+        error: `Wallet (${callerAddress.slice(0, 6)}...${callerAddress.slice(-4)}) is not authorized as Department Admin for Department #${deptIdNum} ("${dept.name}"). Assigned admin is ${dept.admin.slice(0, 6)}...${dept.admin.slice(-4)}.`
+      };
+    }
+
+    // 9. Check on-chain contract capability for 3-argument department-scoped category creation
+    try {
+      const provider = runner.provider || runner;
+      if (typeof provider.getCode === 'function') {
+        const deptMgrAddress = deptContract.target || deptContract.address;
+        const code = await provider.getCode(deptMgrAddress);
+        const sel3 = ethers.id('createCategory(uint256,string,string)').slice(2, 10);
+        if (!code.includes(sel3)) {
+          return {
+            valid: false,
+            error: `On-Chain Contract Limitation: The deployed DepartmentManager contract at ${deptMgrAddress} does not implement department-scoped category creation (createCategory(uint256,string,string)). The contract only has the legacy global category creation reserved for Super Admin. Contract redeployment is required to enable Department Admin category creation.`
+          };
+        }
+      }
+    } catch (codeErr) {
+      console.warn('Bytecode capability check warning:', codeErr);
+    }
+
+    return { valid: true, departmentName: dept.name, departmentId: deptIdNum };
+  } catch (err) {
+    return { valid: false, error: `Pre-flight validation check failed: ${err.message}` };
   }
 }
 

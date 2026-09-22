@@ -5,6 +5,7 @@ import {
   getAuditTrailContract,
 } from './blockchain.js';
 import { isContractConfigured } from '../contracts/addresses.js';
+import { fetchCategorySafe } from './departmentService.js';
 
 /**
  * Defensive helper to ensure a parameter is a valid bytes32 hex string.
@@ -267,7 +268,7 @@ export async function fetchActiveDepartments(runner) {
 /**
  * Fetches all active grievance categories directly from DepartmentManager contract.
  * @param {import('ethers').ContractRunner} runner
- * @returns {Promise<Array<{ id: number, name: string, description: string, isActive: boolean }>>}
+ * @returns {Promise<Array<{ id: number, name: string, description: string, isActive: boolean, departmentId: number }>>}
  */
 export async function fetchActiveCategories(runner) {
   if (!isContractConfigured('DepartmentManager') || !runner) {
@@ -284,19 +285,14 @@ export async function fetchActiveCategories(runner) {
 
   const promises = [];
   for (let id = 1; id <= totalCount; id++) {
-    promises.push(deptManager.getCategory(id));
+    promises.push(fetchCategorySafe(deptManager, id, runner));
   }
 
-  const results = await Promise.all(promises);
+  const results = await Promise.allSettled(promises);
 
   return results
-    .map((cat, index) => ({
-      id: Number(cat.id ?? (index + 1)),
-      name: cat.name,
-      description: cat.description,
-      departmentId: Number(cat.departmentId ?? 0),
-      isActive: Boolean(cat.isActive),
-    }))
+    .filter((r) => r.status === 'fulfilled')
+    .map((r) => r.value)
     .filter((cat) => cat.isActive);
 }
 
