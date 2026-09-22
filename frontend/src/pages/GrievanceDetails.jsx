@@ -6,8 +6,9 @@ import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Alert } from '../components/common/Alert';
-import { formatTimestamp, shortenAddress } from '../utils/formatters';
+import { formatTimestamp, shortenAddress, getExplorerAddressUrl } from '../utils/formatters';
 import {
+  STATUSES,
   STATUS_METADATA,
   PRIORITY_METADATA,
   fetchGrievanceDetails,
@@ -16,6 +17,7 @@ import {
   verifyAuditRecord,
 } from '../services/grievanceService';
 import { fetchFromIpfs, computeContentHash } from '../services/ipfs';
+import { CONTRACT_ADDRESSES } from '../contracts/addresses';
 
 // Modular workflow components
 import { OfficerActionBar } from '../components/grievance/OfficerActionBar';
@@ -42,6 +44,9 @@ export function GrievanceDetails({ grievanceId }) {
   const [auditInfo, setAuditInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Expandable Blockchain Details state
+  const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
 
   // Hash verification state
   const [verificationState, setVerificationState] = useState('IDLE'); // 'IDLE' | 'VERIFYING' | 'MATCH' | 'MISMATCH' | 'FETCH_FAILED'
@@ -167,11 +172,38 @@ export function GrievanceDetails({ grievanceId }) {
     return '/citizen';
   };
 
+  // Helper to determine active step index in lifecycle timeline (0 to 6)
+  const getLifecycleStage = (status) => {
+    switch (status) {
+      case STATUSES.SUBMITTED:
+        return 0; // Submitted
+      case STATUSES.REGISTERED:
+        return 1; // Registered
+      case STATUSES.UNDER_REVIEW:
+        return 2; // Reviewed
+      case STATUSES.UNDER_INVESTIGATION:
+      case STATUSES.ESCALATED:
+        return 3; // Investigating
+      case STATUSES.RESOLUTION_PROPOSED:
+        return 4; // Resolution Proposed
+      case STATUSES.RESOLUTION_REJECTED:
+      case STATUSES.RESOLUTION_ACCEPTED:
+        return 5; // Citizen Decision
+      case STATUSES.RESOLVED:
+      case STATUSES.CLOSED:
+        return 6; // Closed
+      case STATUSES.REJECTED:
+        return -1; // Special rejected state
+      default:
+        return 0;
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto py-12 text-center space-y-3">
+      <div className="max-w-5xl mx-auto py-16 text-center space-y-3">
         <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto" />
-        <p className="text-sm font-medium text-slate-600">
+        <p className="text-sm font-semibold text-slate-600">
           Querying Grievance #{grievanceId} directly from smart contract...
         </p>
       </div>
@@ -182,10 +214,10 @@ export function GrievanceDetails({ grievanceId }) {
     return (
       <div className="max-w-5xl mx-auto space-y-4">
         <Alert variant="danger" title="Grievance Lookup Failed">
-          {error || `Grievance #${grievanceId} could not be found.`}
+          {error || `Grievance #${grievanceId} could not be found on the blockchain.`}
         </Alert>
         <Button variant="secondary" onClick={() => navigate(getBackRoute())}>
-          ← Return to Dashboard
+          ← Return to Console
         </Button>
       </div>
     );
@@ -194,25 +226,166 @@ export function GrievanceDetails({ grievanceId }) {
   const statusMeta = STATUS_METADATA[grievance.status] || { label: 'Unknown', badgeVariant: 'default' };
   const priorityMeta = PRIORITY_METADATA[grievance.priority] || { label: 'Unknown', badgeVariant: 'default' };
   const runner = provider || signer;
+  const currentStageIndex = getLifecycleStage(grievance.status);
+
+  const lifecycleSteps = [
+    { title: 'Submitted', desc: 'Lodge ticket' },
+    { title: 'Registered', desc: 'Dept triage' },
+    { title: 'Reviewed', desc: 'Officer review' },
+    { title: 'Investigating', desc: 'Active probe' },
+    { title: 'Resolution Proposed', desc: 'Remedy logged' },
+    { title: 'Citizen Decision', desc: 'Citizen review' },
+    { title: 'Closed', desc: 'Finalized' },
+  ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-slate-400">Grievance Record</span>
-            <Badge variant="neutral" className="font-mono font-bold text-slate-800">
-              #{grievance.id}
-            </Badge>
-            <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
-            <Badge variant={priorityMeta.badgeVariant}>{priorityMeta.label} Priority</Badge>
+    <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
+      {/* 1. TOP CASE MANAGEMENT HEADER */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono font-extrabold text-slate-900 text-sm sm:text-base">
+                GRIEVANCE #{String(grievance.id).padStart(3, '0')}
+              </span>
+              <Badge variant={statusMeta.badgeVariant} dot>
+                {statusMeta.label}
+              </Badge>
+              <Badge variant={priorityMeta.badgeVariant}>
+                {priorityMeta.label} Priority
+              </Badge>
+              {grievance.reopenCount > 0 && (
+                <Badge variant="warning">
+                  Reopened ({grievance.reopenCount})
+                </Badge>
+              )}
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-2">
+              {grievance.title}
+            </h1>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1">{grievance.title}</h1>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate(getBackRoute())}
+            className="self-start md:self-auto shrink-0 font-bold"
+          >
+            ← Back to Console
+          </Button>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => navigate(getBackRoute())}>
-          ← Back to Console
-        </Button>
+
+        {/* Essential Case Metadata Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-6 text-xs">
+          <div>
+            <span className="text-slate-400 block font-medium">Department</span>
+            <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+              {departmentName || `Dept #${grievance.departmentId}`}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400 block font-medium">Category</span>
+            <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+              {categoryName || `Category #${grievance.categoryId}`}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400 block font-medium">Created Date</span>
+            <span className="font-semibold text-slate-800 mt-0.5 block font-mono">
+              {formatTimestamp(grievance.createdAt)}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400 block font-medium">Last Updated</span>
+            <span className="font-semibold text-slate-800 mt-0.5 block font-mono">
+              {formatTimestamp(grievance.updatedAt)}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400 block font-medium">Assigned Officer</span>
+            {grievance.assignedOfficer && grievance.assignedOfficer !== '0x0000000000000000000000000000000000000000' ? (
+              <a
+                href={getExplorerAddressUrl(grievance.assignedOfficer)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-blue-600 hover:text-blue-800 underline font-semibold mt-0.5 block"
+                title="View on Sepolia Etherscan"
+              >
+                {shortenAddress(grievance.assignedOfficer, 5)} ↗
+              </a>
+            ) : (
+              <span className="text-amber-700 font-semibold mt-0.5 block">
+                Pending Triage
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. VISUAL LIFECYCLE TIMELINE */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-sm sm:text-base font-bold text-slate-900">
+            Grievance Lifecycle Progression
+          </h2>
+          <span className="text-xs text-slate-400 font-mono">
+            SLA Target: {formatTimestamp(grievance.slaDeadline)}
+          </span>
+        </div>
+
+        {/* Stepper Bar */}
+        <div className="overflow-x-auto pb-2">
+          <div className="min-w-[620px] flex items-center justify-between relative">
+            {lifecycleSteps.map((step, idx) => {
+              const isPast = idx < currentStageIndex;
+              const isCurrent = idx === currentStageIndex;
+
+              return (
+                <div key={step.title} className="flex-1 flex flex-col items-center relative group">
+                  {/* Connecting Line */}
+                  {idx > 0 && (
+                    <div
+                      className={`absolute top-4 -left-1/2 w-full h-0.5 z-0 ${
+                        idx <= currentStageIndex ? 'bg-blue-600' : 'bg-slate-200'
+                      }`}
+                    />
+                  )}
+
+                  {/* Step Bubble */}
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs z-10 transition-transform ${
+                      isCurrent
+                        ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md scale-110'
+                        : isPast
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-400 border border-slate-200'
+                    }`}
+                  >
+                    {isPast ? '✓' : idx + 1}
+                  </div>
+
+                  {/* Step Label */}
+                  <div className="text-center mt-2.5">
+                    <span
+                      className={`text-xs block font-bold whitespace-nowrap ${
+                        isCurrent
+                          ? 'text-blue-600 font-extrabold'
+                          : isPast
+                          ? 'text-slate-800'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {step.title}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block whitespace-nowrap">
+                      {step.desc}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Escalation Alert & Controls */}
@@ -239,251 +412,173 @@ export function GrievanceDetails({ grievanceId }) {
         onActionSuccess={loadData}
       />
 
-      {/* Overview Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Core Details (2 cols) */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card title="Grievance Overview (All 15 Fields)" subtitle="On-chain storage record from GrievanceSystem.sol">
-            <div className="divide-y divide-slate-100 text-sm">
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">1. Grievance ID:</span>
-                <span className="font-mono font-bold text-slate-900">#{grievance.id}</span>
-              </div>
+      {/* 3. CASE CONTENT PANELS */}
+      <div className="space-y-6">
+        {/* Core Case Overview */}
+        <Card title="Case Overview & Citizen Statement" subtitle="Details recorded on-chain by the citizen">
+          <div className="space-y-4">
+            <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-100 space-y-2">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Grievance Title & Core Statement
+              </h3>
+              <p className="text-sm text-slate-900 font-semibold leading-relaxed">
+                {grievance.title}
+              </p>
+              {retrievedContent && (
+                <div className="pt-2 border-t border-slate-200/60 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  {retrievedContent.description || JSON.stringify(retrievedContent, null, 2)}
+                </div>
+              )}
+            </div>
 
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">2. Citizen Address:</span>
-                <span className="font-mono text-slate-800 text-xs sm:text-sm">
-                  {shortenAddress(grievance.citizen, 6)}
-                  {address && grievance.citizen.toLowerCase() === address.toLowerCase() && (
-                    <span className="ml-1.5 text-xs text-emerald-600 font-sans font-medium">(You)</span>
-                  )}
-                </span>
-              </div>
+            <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+              <span>
+                Filing Citizen:{' '}
+                <a
+                  href={getExplorerAddressUrl(grievance.citizen)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-blue-600 hover:text-blue-800 underline font-semibold"
+                >
+                  {shortenAddress(grievance.citizen, 6)} ↗
+                </a>
+              </span>
+              <span>
+                Reopen Count: <strong className="text-slate-800">{grievance.reopenCount}</strong>
+              </span>
+            </div>
+          </div>
+        </Card>
 
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">3. Status:</span>
-                <Badge variant={statusMeta.badgeVariant}>{statusMeta.label} ({grievance.status})</Badge>
-              </div>
+        {/* Resolution Panel */}
+        <ResolutionPanel grievance={grievance} runner={runner} />
 
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">4. Priority:</span>
-                <Badge variant={priorityMeta.badgeVariant}>{priorityMeta.label} ({grievance.priority})</Badge>
-              </div>
+        {/* Investigation Notes Panel */}
+        <InvestigationNotesPanel
+          grievance={grievance}
+          runner={runner}
+          signer={signer}
+          userAddress={address}
+          isOfficerOrAdmin={isOfficerOrAdmin}
+        />
 
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">5. Reopen Count:</span>
-                <span className="font-mono text-slate-800">{grievance.reopenCount}</span>
-              </div>
+        {/* Evidence Panel */}
+        <EvidencePanel
+          grievance={grievance}
+          runner={runner}
+          signer={signer}
+          userAddress={address}
+          isOfficerOrAdmin={isOfficerOrAdmin}
+        />
 
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">6. Assigned Officer:</span>
-                <span className="font-mono text-slate-800 text-xs">
-                  {grievance.assignedOfficer && grievance.assignedOfficer !== '0x0000000000000000000000000000000000000000'
-                    ? shortenAddress(grievance.assignedOfficer, 6)
-                    : 'Unassigned (Awaiting Department Admin triage)'}
-                </span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">7. Department ID:</span>
-                <span className="font-medium text-slate-800">
-                  {departmentName ? `${departmentName} (#${grievance.departmentId})` : `Dept #${grievance.departmentId}`}
-                </span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">8. Category ID:</span>
-                <span className="font-medium text-slate-800">
-                  {categoryName ? `${categoryName} (#${grievance.categoryId})` : `Category #${grievance.categoryId}`}
-                </span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">9. Title:</span>
-                <span className="text-slate-800 font-medium">{grievance.title}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">10. Description CID:</span>
-                <span className="font-mono text-slate-800 text-xs break-all">{grievance.descriptionCid}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">11. Description Hash:</span>
-                <span className="font-mono text-slate-800 text-xs break-all">{grievance.descriptionHash}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">12. Created At:</span>
-                <span className="text-slate-800">{formatTimestamp(grievance.createdAt)}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">13. Updated At:</span>
-                <span className="text-slate-800">{formatTimestamp(grievance.updatedAt)}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">14. SLA Deadline:</span>
-                <span className="font-mono text-slate-800">{formatTimestamp(grievance.slaDeadline)}</span>
-              </div>
-
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-500">15. Current Resolution ID:</span>
-                <span className="font-mono text-slate-800 font-bold">
-                  {grievance.currentResolutionId > 0 ? `#${grievance.currentResolutionId}` : '0 (None)'}
-                </span>
+        {/* 4. EXPANDABLE BLOCKCHAIN DETAILS SECTION */}
+        <div className="bg-white rounded-3xl border border-slate-200/90 overflow-hidden shadow-xs">
+          <button
+            type="button"
+            onClick={() => setShowBlockchainDetails((prev) => !prev)}
+            className="w-full px-6 py-4.5 bg-slate-50/70 hover:bg-slate-100/70 transition-colors flex items-center justify-between cursor-pointer text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">⛓️</span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Blockchain Details & Cryptographic Proofs
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {showBlockchainDetails ? 'Click to collapse technical on-chain parameters' : 'Click to inspect smart contract addresses, Keccak-256 hashes, and IPFS CIDs'}
+                </p>
               </div>
             </div>
-          </Card>
+            <span className="text-xs font-bold text-blue-600">
+              {showBlockchainDetails ? 'Hide Details ▲' : 'Show Details ▼'}
+            </span>
+          </button>
 
-          {/* Retrieved Description */}
-          {retrievedContent && (
-            <Card title="IPFS Verified Description Payload" subtitle="Off-chain payload retrieved via CID">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-                <p className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
-                  {retrievedContent.description || JSON.stringify(retrievedContent, null, 2)}
-                </p>
-                {retrievedContent.submittedAt && (
-                  <div className="text-[11px] text-slate-400 font-mono">
-                    Schema: {retrievedContent.schemaVersion || '1.0'} | Submitted:{' '}
-                    {formatTimestamp(retrievedContent.submittedAt)}
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
+          {showBlockchainDetails && (
+            <div className="p-6 border-t border-slate-100 space-y-6 text-xs animate-fade-in">
+              {/* Technical Hash Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 font-mono text-[11px] space-y-1">
+                  <span className="text-slate-400 block font-sans font-semibold text-xs">
+                    On-Chain IPFS CID:
+                  </span>
+                  <span className="text-slate-900 break-all">{grievance.descriptionCid}</span>
+                </div>
 
-          {/* Resolution Panel */}
-          <ResolutionPanel grievance={grievance} runner={runner} />
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 font-mono text-[11px] space-y-1">
+                  <span className="text-slate-400 block font-sans font-semibold text-xs">
+                    On-Chain Keccak-256 Hash:
+                  </span>
+                  <span className="text-slate-900 break-all">{grievance.descriptionHash}</span>
+                </div>
 
-          {/* Investigation Notes Panel */}
-          <InvestigationNotesPanel
-            grievance={grievance}
-            runner={runner}
-            signer={signer}
-            userAddress={address}
-            isOfficerOrAdmin={isOfficerOrAdmin}
-          />
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 font-mono text-[11px] space-y-1">
+                  <span className="text-slate-400 block font-sans font-semibold text-xs">
+                    Authoritative Contract:
+                  </span>
+                  <span className="text-slate-900 break-all">
+                    {CONTRACT_ADDRESSES.GrievanceSystem}
+                  </span>
+                </div>
 
-          {/* Evidence Panel */}
-          <EvidencePanel
-            grievance={grievance}
-            runner={runner}
-            signer={signer}
-            userAddress={address}
-            isOfficerOrAdmin={isOfficerOrAdmin}
-          />
-        </div>
-
-        {/* Sidebar: Hash Verification, Audit Proofs & Timeline (1 col) */}
-        <div className="space-y-6">
-          <Card title="Cryptographic Integrity" subtitle="Dual-reference IPFS hash verification">
-            <div className="space-y-3 text-xs">
-              <div>
-                <span className="text-slate-500 block font-medium">On-Chain IPFS CID:</span>
-                <span className="font-mono text-[11px] text-slate-800 break-all bg-slate-50 p-1.5 rounded block border border-slate-200 mt-0.5">
-                  {grievance.descriptionCid}
-                </span>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 font-mono text-[11px] space-y-1">
+                  <span className="text-slate-400 block font-sans font-semibold text-xs">
+                    Audit Log Verification:
+                  </span>
+                  <span className="text-slate-900 font-sans font-semibold">
+                    {auditInfo?.isVerified ? `Verified (Entry #${auditInfo.auditId})` : 'Logged on-chain'}
+                  </span>
+                </div>
               </div>
 
-              <div>
-                <span className="text-slate-500 block font-medium">On-Chain Keccak-256 Hash:</span>
-                <span className="font-mono text-[11px] text-slate-800 break-all bg-slate-50 p-1.5 rounded block border border-slate-200 mt-0.5">
-                  {grievance.descriptionHash}
-                </span>
-              </div>
-
+              {/* IPFS Verification Button */}
               <div className="pt-2">
                 <Button
                   variant="primary"
                   size="sm"
                   loading={verificationState === 'VERIFYING'}
                   onClick={handleVerifyIntegrity}
-                  className="w-full text-xs font-semibold"
+                  className="font-bold"
                 >
-                  Verify Description Integrity
+                  Fetch from IPFS & Confirm Keccak-256 Match
                 </Button>
               </div>
 
               {verificationState === 'MATCH' && (
-                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-900 text-xs space-y-1.5">
-                  <div className="font-bold flex items-center justify-between">
-                    <span className="flex items-center gap-1 text-emerald-700">✓ MATCH</span>
+                <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 space-y-1 text-xs animate-fade-in">
+                  <div className="font-bold flex items-center justify-between text-emerald-800">
+                    <span>✓ Cryptographic Match Confirmed</span>
                     <Badge variant="success" className="text-[10px]">
-                      {isFromNetwork ? 'Decentralized Network' : 'Client Cache'}
+                      {isFromNetwork ? 'Decentralized Gateway' : 'Client Cache'}
                     </Badge>
                   </div>
-                  <div className="text-[11px] space-y-1 text-emerald-800 pt-1 border-t border-emerald-200">
-                    <div>
-                      <span className="font-semibold text-slate-600">Retrieval Source:</span>{' '}
-                      <span className="font-mono text-[10px] break-all">{retrievalSource}</span>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-slate-600">Calculated Hash:</span>{' '}
-                      <span className="font-mono text-[10px] break-all">{calculatedHash}</span>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-slate-600">On-Chain Hash:</span>{' '}
-                      <span className="font-mono text-[10px] break-all">{grievance.descriptionHash}</span>
-                    </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed pt-1">
+                    {verificationMessage}
+                  </p>
+                  <div className="font-mono text-[10px] text-slate-500 pt-1">
+                    Calculated Hash: {calculatedHash}
                   </div>
-                  <p className="mt-1 leading-snug text-emerald-700 text-[11px]">{verificationMessage}</p>
                 </div>
               )}
 
               {verificationState === 'MISMATCH' && (
-                <div className="p-3 bg-rose-50 border border-rose-300 rounded-lg text-rose-900 text-xs space-y-1.5">
-                  <div className="font-bold flex items-center justify-between text-rose-700">
-                    <span>⚠️ MISMATCH</span>
-                    <Badge variant="danger" className="text-[10px]">Integrity Breach</Badge>
-                  </div>
-                  <div className="text-[11px] space-y-1 text-rose-800 pt-1 border-t border-rose-200">
-                    <div>
-                      <span className="font-semibold">Calculated:</span>{' '}
-                      <span className="font-mono text-[10px] break-all">{calculatedHash}</span>
-                    </div>
-                    <div>
-                      <span className="font-semibold">On-Chain:</span>{' '}
-                      <span className="font-mono text-[10px] break-all">{grievance.descriptionHash}</span>
-                    </div>
-                  </div>
-                  <p className="mt-1 leading-snug text-rose-700 text-[11px]">{verificationMessage}</p>
+                <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-950 text-xs animate-fade-in">
+                  <div className="font-bold text-rose-800">⚠️ Hash Mismatch Detected!</div>
+                  <p className="text-[11px] text-rose-700 mt-1">{verificationMessage}</p>
                 </div>
               )}
 
               {verificationState === 'FETCH_FAILED' && (
-                <div className="p-2.5 bg-amber-50 border border-amber-300 rounded text-amber-900 text-xs">
-                  <div className="font-bold text-amber-800">Notice</div>
-                  <p className="mt-1 leading-snug text-[11px] text-amber-700">{verificationMessage}</p>
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs">
+                  {verificationMessage}
                 </div>
               )}
             </div>
-          </Card>
-
-          <Card title="Audit Trail Verification" subtitle="Forensic immutable on-chain proofs">
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Audit Proof:</span>
-                {auditInfo?.isVerified ? (
-                  <Badge variant="success" className="text-[11px]">
-                    Verified (ID #{auditInfo.auditId})
-                  </Badge>
-                ) : (
-                  <Badge variant="warning" className="text-[11px]">
-                    GrievanceCreated Event
-                  </Badge>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Actions are logged on-chain by AuditTrail.sol with immutable target bindings.
-              </p>
-            </div>
-          </Card>
-
-          {/* Audit Timeline */}
-          <AuditTimeline grievanceId={grievance.id} runner={runner} />
+          )}
         </div>
+
+        {/* 5. AUDIT TIMELINE */}
+        <AuditTimeline grievanceId={grievance.id} runner={runner} />
       </div>
     </div>
   );

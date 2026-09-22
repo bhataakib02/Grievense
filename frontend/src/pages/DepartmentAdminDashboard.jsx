@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { useRouter } from '../hooks/useRouter';
 import { useRoles } from '../hooks/useRoles';
@@ -6,7 +6,9 @@ import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Alert } from '../components/common/Alert';
-import { formatTimestamp, shortenAddress } from '../utils/formatters';
+import { Modal } from '../components/common/Modal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { formatTimestamp, shortenAddress, getExplorerAddressUrl } from '../utils/formatters';
 import {
   STATUSES,
   STATUS_METADATA,
@@ -32,7 +34,7 @@ import {
 } from '../services/escalationService';
 
 export function DepartmentAdminDashboard() {
-  const { address, signer, provider, networkName, chainId } = useWallet();
+  const { address, signer, provider, chainId } = useWallet();
   const { currentRole, ROLES } = useRoles();
   const { navigate } = useRouter();
 
@@ -41,13 +43,14 @@ export function DepartmentAdminDashboard() {
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [deptOfficers, setDeptOfficers] = useState([]);
   const [deptGrievances, setDeptGrievances] = useState([]);
-  const [_loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
+  const [currentTime] = useState(() => Math.floor(Date.now() / 1000));
 
-  // Form states
+  // Action loading indicator
   const [actionLoading, setActionLoading] = useState('');
-  
+
   // Triage assign modal state
   const [assignTargetGrievance, setAssignTargetGrievance] = useState(null);
   const [selectedOfficerForAssign, setSelectedOfficerForAssign] = useState('');
@@ -65,6 +68,9 @@ export function DepartmentAdminDashboard() {
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
   const [newOfficerAddress, setNewOfficerAddress] = useState('');
 
+  // Officer remove confirm dialog state
+  const [confirmRemoveOfficer, setConfirmRemoveOfficer] = useState(null); // officer address
+
   // Officer transfer state
   const [transferTargetOfficer, setTransferTargetOfficer] = useState('');
   const [transferTargetDeptId, setTransferTargetDeptId] = useState('');
@@ -78,8 +84,7 @@ export function DepartmentAdminDashboard() {
       setLoading(true);
       setError(null);
       const all = await fetchAllDepartments(runner);
-      
-      // If user is super admin, allow viewing any department; if dept admin, filter for assigned
+
       let adminDepts = all;
       if (currentRole !== ROLES.SUPER_ADMIN && address) {
         adminDepts = all.filter(
@@ -100,7 +105,14 @@ export function DepartmentAdminDashboard() {
   }, [runner, address, currentRole, ROLES.SUPER_ADMIN, selectedDeptId]);
 
   useEffect(() => {
-    loadDepartments();
+    let active = true;
+    const fetchDepts = async () => {
+      if (active) await loadDepartments();
+    };
+    fetchDepts();
+    return () => {
+      active = false;
+    };
   }, [loadDepartments]);
 
   // 2. Load selected department data (officers & grievances)
@@ -122,12 +134,15 @@ export function DepartmentAdminDashboard() {
   }, [selectedDeptId, runner]);
 
   useEffect(() => {
-    loadDeptData();
+    let active = true;
+    const fetchDeptDetails = async () => {
+      if (active) await loadDeptData();
+    };
+    fetchDeptDetails();
+    return () => {
+      active = false;
+    };
   }, [loadDeptData]);
-
-  // --------------------------------------------------------------------------
-  // Handlers
-  // --------------------------------------------------------------------------
 
   // Register intake (SUBMITTED -> REGISTERED)
   const handleRegisterGrievance = async (grievanceId) => {
@@ -136,7 +151,7 @@ export function DepartmentAdminDashboard() {
       setError(null);
       setSuccessMsg('');
       await registerGrievance(signer, grievanceId);
-      setSuccessMsg(`Grievance #${grievanceId} formally registered in department intake.`);
+      setSuccessMsg(`Grievance #${grievanceId} formally registered on-chain.`);
       await loadDeptData();
     } catch (err) {
       setError(err.message || 'Registration failed.');
@@ -208,14 +223,11 @@ export function DepartmentAdminDashboard() {
       setError(null);
       setSuccessMsg('');
 
-      // Check if address already has global OFFICER_ROLE
       const roles = await fetchUserRoles(runner, newOfficerAddress.trim());
       if (!roles.isOfficer) {
-        // Dept Admin or Super Admin can grant OFFICER_ROLE
         await grantOfficerRole(signer, newOfficerAddress.trim());
       }
 
-      // Add to department
       await addOfficerToDepartment(signer, selectedDeptId, newOfficerAddress.trim());
 
       setSuccessMsg(`Officer ${shortenAddress(newOfficerAddress.trim(), 6)} added to department roster.`);
@@ -230,13 +242,15 @@ export function DepartmentAdminDashboard() {
   };
 
   // Remove Officer from Department
-  const handleRemoveOfficer = async (officerAddr) => {
+  const executeRemoveOfficer = async () => {
+    if (!confirmRemoveOfficer) return;
     try {
-      setActionLoading(`remove_${officerAddr}`);
+      setActionLoading(`remove_${confirmRemoveOfficer}`);
       setError(null);
       setSuccessMsg('');
-      await removeOfficerFromDepartment(signer, selectedDeptId, officerAddr);
-      setSuccessMsg(`Officer ${shortenAddress(officerAddr, 6)} removed from department.`);
+      await removeOfficerFromDepartment(signer, selectedDeptId, confirmRemoveOfficer);
+      setSuccessMsg(`Officer ${shortenAddress(confirmRemoveOfficer, 6)} removed from department.`);
+      setConfirmRemoveOfficer(null);
       await loadDeptData();
     } catch (err) {
       setError(err.message || 'Failed to remove officer.');
@@ -322,97 +336,136 @@ export function DepartmentAdminDashboard() {
     }
   };
 
-  // --------------------------------------------------------------------------
   // Categorized Grievance Lists
-  // --------------------------------------------------------------------------
-  const submittedGrievances = deptGrievances.filter((g) => g.status === STATUSES.SUBMITTED);
-  const registeredGrievances = deptGrievances.filter((g) => g.status === STATUSES.REGISTERED);
-  const activeAssignments = deptGrievances.filter(
-    (g) =>
-      g.status === STATUSES.ASSIGNED ||
-      g.status === STATUSES.UNDER_REVIEW ||
-      g.status === STATUSES.UNDER_INVESTIGATION ||
-      g.status === STATUSES.REOPENED
+  const submittedGrievances = useMemo(
+    () => deptGrievances.filter((g) => g.status === STATUSES.SUBMITTED),
+    [deptGrievances]
   );
-  const escalatedGrievances = deptGrievances.filter(
-    (g) =>
-      g.status === STATUSES.ESCALATED ||
-      (g.status === STATUSES.UNDER_INVESTIGATION && Math.floor(Date.now() / 1000) > g.slaDeadline)
+  const registeredGrievances = useMemo(
+    () => deptGrievances.filter((g) => g.status === STATUSES.REGISTERED),
+    [deptGrievances]
+  );
+  const activeAssignments = useMemo(
+    () =>
+      deptGrievances.filter(
+        (g) =>
+          g.status === STATUSES.ASSIGNED ||
+          g.status === STATUSES.UNDER_REVIEW ||
+          g.status === STATUSES.UNDER_INVESTIGATION ||
+          g.status === STATUSES.REOPENED
+      ),
+    [deptGrievances]
+  );
+  const escalatedGrievances = useMemo(
+    () =>
+      deptGrievances.filter(
+        (g) =>
+          g.status === STATUSES.ESCALATED ||
+          (g.status === STATUSES.UNDER_INVESTIGATION && currentTime > g.slaDeadline)
+      ),
+    [deptGrievances, currentTime]
   );
 
   const selectedDept = departments.find((d) => d.id === selectedDeptId);
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
       {/* Department Admin Banner */}
-      <Card className="bg-linear-to-r from-zinc-900 via-slate-900 to-blue-950 text-white border-0 shadow-md">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Badge variant="neutral" className="bg-zinc-800 text-zinc-200 border-zinc-600">
-                Department Administrator
+              <Badge variant="primary" dot className="font-bold text-xs uppercase">
+                Department Console
               </Badge>
-              <span className="text-xs text-slate-300 font-mono">
-                Chain ID: {chainId} ({networkName})
+              <span className="text-xs text-slate-400 font-mono">
+                Ethereum Sepolia ({chainId})
               </span>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">Department Administration Console</h2>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Admin Account: <span className="font-mono font-semibold text-white">{address}</span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Department Operations & Triage
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Department Administrator:{' '}
+              <span className="font-mono font-semibold text-slate-800">{address}</span>
             </p>
           </div>
 
-          <div className="flex flex-col sm:items-end gap-2">
-            {departments.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-300">Active Dept:</span>
-                <select
-                  value={selectedDeptId || ''}
-                  onChange={(e) => setSelectedDeptId(Number(e.target.value))}
-                  className="text-xs bg-slate-800 text-white border border-slate-700 rounded px-2.5 py-1 outline-none font-semibold"
-                >
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      #{d.id} {d.name} {!d.isActive && '(Deactivated)'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <span className="text-[11px] text-slate-400">
-              Governed by DepartmentManager.sol & GrievanceSystem.sol
+          {/* Department Selector */}
+          {departments.length > 1 && (
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-bold text-slate-500">Department:</span>
+              <select
+                value={selectedDeptId || ''}
+                onChange={(e) => setSelectedDeptId(Number(e.target.value))}
+                className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none"
+              >
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} (#{d.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Overview Metric Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 text-xs">
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-500 block font-medium">Department Name</span>
+            <span className="text-sm sm:text-base font-bold text-slate-900 mt-1 block truncate">
+              {selectedDept?.name || 'Department'}
+            </span>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-500 block font-medium">Pending Triage</span>
+            <span className="text-lg font-bold text-blue-600 mt-1 block">
+              {submittedGrievances.length + registeredGrievances.length}
+            </span>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-500 block font-medium">Active Officers</span>
+            <span className="text-lg font-bold text-slate-900 mt-1 block">
+              {deptOfficers.length}
+            </span>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-500 block font-medium">SLA Escalations</span>
+            <span className={`text-lg font-bold mt-1 block ${escalatedGrievances.length > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+              {escalatedGrievances.length}
             </span>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Global Alerts */}
       {error && (
-        <Alert variant="danger" title="Operation Error">
+        <Alert variant="danger" title="Operation Notice" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {successMsg && (
-        <Alert variant="success" title="Success">
+        <Alert variant="success" title="Success" onClose={() => setSuccessMsg('')}>
           {successMsg}
         </Alert>
       )}
 
-      {/* Admin Quick Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
+      {/* Section Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
         {[
-          { id: 'triage', label: `Triage Queue (${submittedGrievances.length + registeredGrievances.length})` },
+          { id: 'triage', label: `Pending Triage (${submittedGrievances.length + registeredGrievances.length})` },
+          { id: 'investigations', label: `Active Investigations (${activeAssignments.length})` },
+          { id: 'escalations', label: `SLA Escalations (${escalatedGrievances.length})` },
           { id: 'officers', label: `Officer Roster (${deptOfficers.length})` },
-          { id: 'assignments', label: `Active Cases (${activeAssignments.length})` },
-          { id: 'sla', label: `SLA Escalations (${escalatedGrievances.length})` },
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSection(tab.id)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
               activeSection === tab.id
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             {tab.label}
@@ -420,483 +473,91 @@ export function DepartmentAdminDashboard() {
         ))}
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* SECTION 1: TRIAGE & INTAKE */}
-      {/* ------------------------------------------------------------------- */}
+      {/* 1. TRIAGE SECTION */}
       {activeSection === 'triage' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
           <Card
-            title={`Triage & Registration Queue — ${selectedDept ? selectedDept.name : 'Department'}`}
-            subtitle="Citizen-filed grievances awaiting formal intake registration and officer assignment"
+            title="Intake Triage & Officer Assignment"
+            subtitle="Register new grievances and assign field officers for formal investigation"
           >
-            {submittedGrievances.length === 0 && registeredGrievances.length === 0 ? (
-              <div className="text-center py-12 px-4 space-y-3 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-lg mx-auto">
-                  📥
-                </div>
-                <h4 className="text-sm font-semibold text-slate-700">Triage Queue Empty</h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  No unregistered grievances targeting this department currently exist on the blockchain.
-                </p>
+            {loading ? (
+              <div className="py-10 text-center text-xs text-slate-500">Loading triage cases...</div>
+            ) : submittedGrievances.length === 0 && registeredGrievances.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No incoming grievances currently awaiting departmental triage.
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* 1A: Submitted Grievances awaiting Register */}
-                {submittedGrievances.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                      Awaiting Department Registration ({submittedGrievances.length})
-                    </h4>
-                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white">
-                      {submittedGrievances.map((g) => {
-                        const prio = PRIORITY_METADATA[g.priority] || { label: 'Medium', badgeVariant: 'default' };
-                        return (
-                          <div key={g.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-slate-900">#{g.id}</span>
-                                <Badge variant={prio.badgeVariant}>{prio.label}</Badge>
-                                <span className="font-semibold text-slate-800 text-sm">{g.title}</span>
-                              </div>
-                              <div className="text-slate-500 text-[11px] flex gap-3">
-                                <span>Citizen: {shortenAddress(g.citizen, 5)}</span>
-                                <span>Submitted: {formatTimestamp(g.createdAt)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => navigate(`/grievance/${g.id}`)}
-                              >
-                                View Record
-                              </Button>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                loading={actionLoading === `reg_${g.id}`}
-                                onClick={() => handleRegisterGrievance(g.id)}
-                              >
-                                Register Intake
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => {
-                                  setRejectTargetGrievance(g);
-                                  setRejectReason('');
-                                }}
-                              >
-                                Reject
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 1B: Registered Grievances awaiting Officer Assignment */}
-                {registeredGrievances.length > 0 && (
-                  <div className="space-y-2 pt-4">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                      Registered — Awaiting Officer Assignment ({registeredGrievances.length})
-                    </h4>
-                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white">
-                      {registeredGrievances.map((g) => {
-                        const prio = PRIORITY_METADATA[g.priority] || { label: 'Medium', badgeVariant: 'default' };
-                        return (
-                          <div key={g.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-slate-900">#{g.id}</span>
-                                <Badge variant="neutral">REGISTERED</Badge>
-                                <Badge variant={prio.badgeVariant}>{prio.label}</Badge>
-                                <span className="font-semibold text-slate-800 text-sm">{g.title}</span>
-                              </div>
-                              <div className="text-slate-500 text-[11px] flex gap-3">
-                                <span>Citizen: {shortenAddress(g.citizen, 5)}</span>
-                                <span>SLA Deadline: {formatTimestamp(g.slaDeadline)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => navigate(`/grievance/${g.id}`)}
-                              >
-                                View Record
-                              </Button>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => setAssignTargetGrievance(g)}
-                              >
-                                Assign Officer
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => {
-                                  setRejectTargetGrievance(g);
-                                  setRejectReason('');
-                                }}
-                              >
-                                Reject
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-
-          {/* Assign Officer Modal / Dialog */}
-          {assignTargetGrievance && (
-            <Card
-              title={`Assign Officer to Grievance #${assignTargetGrievance.id}`}
-              subtitle={assignTargetGrievance.title}
-              className="border-blue-300 bg-blue-50/20"
-            >
-              <form onSubmit={handleAssignOfficer} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Select Handling Officer from Department Roster *
-                  </label>
-                  {deptOfficers.length === 0 ? (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                      No officers are currently enrolled in this department. Please add an officer in the "Officer Roster" tab first.
-                    </div>
-                  ) : (
-                    <select
-                      required
-                      value={selectedOfficerForAssign}
-                      onChange={(e) => setSelectedOfficerForAssign(e.target.value)}
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
-                    >
-                      <option value="">-- Choose Officer --</option>
-                      {deptOfficers.map((off) => (
-                        <option key={off} value={off}>
-                          {off}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setAssignTargetGrievance(null);
-                      setSelectedOfficerForAssign('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    loading={actionLoading === 'assign'}
-                    disabled={deptOfficers.length === 0}
-                  >
-                    Confirm Officer Assignment
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          )}
-
-          {/* Reject Grievance Modal */}
-          {rejectTargetGrievance && (
-            <Card
-              title={`Reject Grievance #${rejectTargetGrievance.id}`}
-              subtitle={rejectTargetGrievance.title}
-              className="border-rose-300 bg-rose-50/20"
-            >
-              <form onSubmit={handleRejectGrievance} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Rejection Reason / Grounds *
-                  </label>
-                  <textarea
-                    required
-                    rows={3}
-                    placeholder="State the administrative or jurisdiction grounds for rejection..."
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setRejectTargetGrievance(null);
-                      setRejectReason('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="danger"
-                    size="sm"
-                    loading={actionLoading === `reject_${rejectTargetGrievance.id}`}
-                    disabled={!rejectReason.trim()}
-                  >
-                    Confirm Administrative Rejection
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* SECTION 2: OFFICER ROSTER */}
-      {/* ------------------------------------------------------------------- */}
-      {activeSection === 'officers' && (
-        <Card
-          title="Department Officer Roster"
-          subtitle={`Staff members authorized to handle cases for ${selectedDept ? selectedDept.name : 'this department'}`}
-        >
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-500">
-                Department officers are verified via <code className="font-mono text-slate-700">DepartmentManager.isOfficerInDepartment()</code>.
-              </span>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowAddOfficerModal(true)}
-              >
-                + Add Officer to Department
-              </Button>
-            </div>
-
-            {/* Add Officer Modal */}
-            {showAddOfficerModal && (
-              <form
-                onSubmit={handleAddOfficer}
-                className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3"
-              >
-                <h4 className="text-xs font-bold text-slate-800">
-                  Enroll Officer into {selectedDept?.name}
-                </h4>
-                <div>
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Officer Wallet Address (0x...) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="0x..."
-                    value={newOfficerAddress}
-                    onChange={(e) => setNewOfficerAddress(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded font-mono outline-none bg-white"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    If this address does not already hold the global Officer role, the Department Admin will grant it automatically.
-                  </p>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setShowAddOfficerModal(false);
-                      setNewOfficerAddress('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    loading={actionLoading === 'add_officer'}
-                  >
-                    Enroll Officer
-                  </Button>
-                </div>
-              </form>
-            )}
-
-            {deptOfficers.length === 0 ? (
-              <div className="text-center py-10 px-4 bg-slate-50 rounded-lg border border-dashed border-slate-200 space-y-2">
-                <div className="text-lg">👥</div>
-                <h4 className="text-xs font-semibold text-slate-700">No Officers Enrolled</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Enroll qualified officer addresses above to assign incoming grievances.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white overflow-hidden">
-                {deptOfficers.map((offAddr, idx) => (
-                  <div key={offAddr} className="p-3 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-3">
-                      <Badge variant="neutral" className="font-mono text-[10px]">
-                        #{idx + 1}
-                      </Badge>
-                      <span className="font-mono text-slate-900 font-semibold">{offAddr}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setTransferTargetOfficer(offAddr);
-                          setTransferTargetDeptId('');
-                        }}
-                        className="text-[11px] py-1 px-2.5"
-                      >
-                        Transfer
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        loading={actionLoading === `remove_${offAddr}`}
-                        onClick={() => handleRemoveOfficer(offAddr)}
-                        className="text-[11px] py-1 px-2.5"
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Transfer Officer Modal */}
-            {transferTargetOfficer && (
-              <Card
-                title="Transfer Officer to Another Department"
-                subtitle={`Officer: ${transferTargetOfficer}`}
-                className="border-indigo-300 bg-indigo-50/20 mt-4"
-              >
-                <form onSubmit={handleTransferOfficer} className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Destination Department *
-                    </label>
-                    <select
-                      required
-                      value={transferTargetDeptId}
-                      onChange={(e) => setTransferTargetDeptId(e.target.value)}
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
-                    >
-                      <option value="">-- Choose Destination Department --</option>
-                      {departments
-                        .filter((d) => d.id !== selectedDeptId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>
-                            #{d.id} - {d.name} {d.isActive ? '' : '(Inactive)'}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setTransferTargetOfficer('');
-                        setTransferTargetDeptId('');
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="sm"
-                      loading={actionLoading === `transfer_${transferTargetOfficer}`}
-                      disabled={!transferTargetDeptId}
-                    >
-                      Confirm Transfer
-                    </Button>
-                  </div>
-                </form>
-              </Card>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* SECTION 3: CASE ASSIGNMENTS & REASSIGNMENT */}
-      {/* ------------------------------------------------------------------- */}
-      {activeSection === 'assignments' && (
-        <div className="space-y-6">
-          <Card
-            title="Active Case Assignments"
-            subtitle="Under investigation or review with active officer accountability"
-          >
-            {activeAssignments.length === 0 ? (
-              <div className="text-center py-12 px-4 space-y-2 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                <div className="text-lg">📂</div>
-                <h4 className="text-xs font-semibold text-slate-700">No Active Case Assignments</h4>
-                <p className="text-xs text-slate-500">
-                  Assigned grievances in progress will appear here with reassignment controls.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white overflow-hidden">
-                {activeAssignments.map((g) => {
-                  const sMeta = STATUS_METADATA[g.status] || { label: 'Active', badgeVariant: 'default' };
+              <div className="divide-y divide-slate-100">
+                {[...submittedGrievances, ...registeredGrievances].map((g) => {
+                  const sMeta = STATUS_METADATA[g.status] || { label: 'Unknown', badgeVariant: 'default' };
                   const pMeta = PRIORITY_METADATA[g.priority] || { label: 'Medium', badgeVariant: 'default' };
-                  const isBreached = Math.floor(Date.now() / 1000) > g.slaDeadline;
 
                   return (
-                    <div key={g.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="space-y-1">
+                    <div
+                      key={g.id}
+                      className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/70 px-3 rounded-xl transition-colors"
+                    >
+                      <div className="space-y-1 max-w-xl">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-slate-900">#{g.id}</span>
-                          <Badge variant={sMeta.badgeVariant}>{sMeta.label}</Badge>
-                          <Badge variant={pMeta.badgeVariant}>{pMeta.label}</Badge>
-                          {isBreached && <Badge variant="danger">SLA Breached</Badge>}
-                          <span className="font-semibold text-slate-800 text-sm">{g.title}</span>
-                        </div>
-                        <div className="text-slate-500 text-[11px] flex flex-wrap gap-x-4 gap-y-1">
-                          <span>
-                            Handling Officer:{' '}
-                            <span className="font-mono text-slate-800 font-medium">
-                              {shortenAddress(g.assignedOfficer, 6)}
-                            </span>
+                          <span className="font-mono text-xs font-bold text-slate-900">
+                            #{g.id}
                           </span>
-                          <span>Deadline: {formatTimestamp(g.slaDeadline)}</span>
-                          <span>Reopen Count: {g.reopenCount}</span>
+                          <Badge variant={sMeta.badgeVariant} dot className="text-[10px]">
+                            {sMeta.label}
+                          </Badge>
+                          <Badge variant={pMeta.badgeVariant} className="text-[10px]">
+                            {pMeta.label} Priority
+                          </Badge>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900">
+                          {g.title}
+                        </h4>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          Submitted: {formatTimestamp(g.createdAt)} | Citizen: {shortenAddress(g.citizen, 5)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {g.status === STATUSES.SUBMITTED && (
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            loading={actionLoading === `reg_${g.id}`}
+                            onClick={() => handleRegisterGrievance(g.id)}
+                            className="font-bold"
+                          >
+                            1. Register Intake
+                          </Button>
+                        )}
                         <Button
+                          size="xs"
+                          variant="primary"
+                          onClick={() => {
+                            setAssignTargetGrievance(g);
+                            setSelectedOfficerForAssign(deptOfficers[0] || '');
+                          }}
+                          disabled={deptOfficers.length === 0}
+                          className="font-bold"
+                        >
+                          {g.status === STATUSES.SUBMITTED ? '2. Assign Officer' : 'Assign Officer'}
+                        </Button>
+                        <Button
+                          size="xs"
                           variant="secondary"
-                          size="sm"
-                          onClick={() => navigate(`/grievance/${g.id}`)}
+                          onClick={() => navigate(`/dept-admin/grievance/${g.id}`)}
                         >
                           View Details
                         </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setReassignTarget(g)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRejectTargetGrievance(g);
+                            setRejectReason('');
+                          }}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 cursor-pointer"
                         >
-                          Reassign Officer
-                        </Button>
+                          Reject
+                        </button>
                       </div>
                     </div>
                   );
@@ -904,151 +565,511 @@ export function DepartmentAdminDashboard() {
               </div>
             )}
           </Card>
-
-          {/* Reassign Officer Form */}
-          {reassignTarget && (
-            <Card
-              title={`Reassign Grievance #${reassignTarget.id}`}
-              subtitle={reassignTarget.title}
-              className="border-amber-300 bg-amber-50/20"
-            >
-              <form onSubmit={handleReassignOfficer} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Select New Handling Officer *
-                  </label>
-                  <select
-                    required
-                    value={newOfficerForReassign}
-                    onChange={(e) => setNewOfficerForReassign(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
-                  >
-                    <option value="">-- Choose Officer --</option>
-                    {deptOfficers
-                      .filter((off) => off.toLowerCase() !== reassignTarget.assignedOfficer?.toLowerCase())
-                      .map((off) => (
-                        <option key={off} value={off}>
-                          {off}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Reassignment Justification / Audit Reason *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., Officer transferred, specialized technical skills needed..."
-                    value={reassignReason}
-                    onChange={(e) => setReassignReason(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded outline-none bg-white"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setReassignTarget(null);
-                      setNewOfficerForReassign('');
-                      setReassignReason('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    loading={actionLoading === 'reassign'}
-                  >
-                    Confirm Reassignment
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          )}
         </div>
       )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* SECTION 4: SLA ESCALATION MONITORING */}
-      {/* ------------------------------------------------------------------- */}
-      {activeSection === 'sla' && (
-        <Card
-          title="SLA Escalation Monitoring"
-          subtitle="Grievances with expired SLA resolution deadlines or under administrative escalation"
-        >
-          {escalatedGrievances.length === 0 ? (
-            <div className="text-center py-12 px-4 space-y-2 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-              <div className="text-lg">⏱️</div>
-              <h4 className="text-xs font-semibold text-slate-700">No Breached or Escalated Grievances</h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                All departmental cases are within compliance windows.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white overflow-hidden">
-              {escalatedGrievances.map((g) => {
-                const isEsc = g.status === STATUSES.ESCALATED;
-                return (
-                  <div key={g.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div className="space-y-1">
+      {/* 2. ACTIVE INVESTIGATIONS */}
+      {activeSection === 'investigations' && (
+        <div className="space-y-6 animate-fade-in">
+          <Card
+            title="Active Investigations"
+            subtitle="Cases currently under active probe by assigned department field officers"
+          >
+            {activeAssignments.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No cases currently assigned or under investigation.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">ID</th>
+                      <th className="py-3 px-4">Title</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Assigned Officer</th>
+                      <th className="py-3 px-4">SLA Deadline</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {activeAssignments.map((g) => {
+                      const sMeta = STATUS_METADATA[g.status] || { label: 'Unknown', badgeVariant: 'default' };
+                      const isBreached = currentTime > g.slaDeadline;
+
+                      return (
+                        <tr key={g.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            #{g.id}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-800 max-w-xs truncate">
+                            {g.title}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant={sMeta.badgeVariant} dot className="text-[10px]">
+                              {sMeta.label}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px] text-slate-700">
+                            <a
+                              href={getExplorerAddressUrl(g.assignedOfficer)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 underline"
+                            >
+                              {shortenAddress(g.assignedOfficer, 5)}
+                            </a>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px]">
+                            <span className={isBreached ? 'text-rose-600 font-bold' : 'text-slate-600'}>
+                              {formatTimestamp(g.slaDeadline)}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReassignTarget(g);
+                                  setNewOfficerForReassign(deptOfficers.find((o) => o.toLowerCase() !== g.assignedOfficer.toLowerCase()) || '');
+                                  setReassignReason('');
+                                }}
+                                className="text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
+                              >
+                                Reassign
+                              </button>
+                              <span>•</span>
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => navigate(`/dept-admin/grievance/${g.id}`)}
+                              >
+                                View
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* 3. ESCALATIONS */}
+      {activeSection === 'escalations' && (
+        <div className="space-y-6 animate-fade-in">
+          <Card
+            title="SLA Escalations & Critical Overdue Cases"
+            subtitle="Cases that have breached their deterministic on-chain resolution deadline"
+          >
+            {escalatedGrievances.length === 0 ? (
+              <div className="py-10 text-center text-xs text-emerald-700 bg-emerald-50/50 rounded-xl border border-emerald-200">
+                ✓ All departmental grievances are currently within SLA deadlines!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {escalatedGrievances.map((g) => (
+                  <div
+                    key={g.id}
+                    className="p-4 bg-rose-50/50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-slate-900">#{g.id}</span>
-                        {isEsc ? (
-                          <Badge variant="danger">ESCALATED</Badge>
-                        ) : (
-                          <Badge variant="danger">SLA Breached</Badge>
-                        )}
-                        <span className="font-semibold text-slate-800 text-sm">{g.title}</span>
+                        <Badge variant="danger" dot>SLA BREACHED</Badge>
                       </div>
-                      <div className="text-slate-500 text-[11px] flex flex-wrap gap-x-4">
-                        <span>Officer: {shortenAddress(g.assignedOfficer, 6)}</span>
-                        <span>Deadline was: {formatTimestamp(g.slaDeadline)}</span>
+                      <h4 className="font-bold text-slate-900 text-sm mt-1">{g.title}</h4>
+                      <div className="text-[11px] text-slate-500 font-mono mt-1">
+                        SLA Target: {formatTimestamp(g.slaDeadline)} | Officer: {shortenAddress(g.assignedOfficer, 5)}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+
+                    <div className="flex items-center gap-2">
+                      {g.status === STATUSES.ESCALATED ? (
+                        <Button
+                          size="xs"
+                          variant="success"
+                          loading={actionLoading === `res_esc_${g.id}`}
+                          onClick={() => handleResolveEscalate(g.id)}
+                          className="font-bold"
+                        >
+                          Resolve Escalation
+                        </Button>
+                      ) : (
+                        <Button
+                          size="xs"
+                          variant="danger"
+                          loading={actionLoading === `esc_${g.id}`}
+                          onClick={() => handleTriggerEscalate(g.id)}
+                          className="font-bold"
+                        >
+                          Trigger Formal Escalation
+                        </Button>
+                      )}
                       <Button
+                        size="xs"
                         variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/grievance/${g.id}`)}
+                        onClick={() => navigate(`/dept-admin/grievance/${g.id}`)}
                       >
                         Inspect
                       </Button>
-                      {!isEsc && (
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          loading={actionLoading === `esc_${g.id}`}
-                          onClick={() => handleTriggerEscalate(g.id)}
-                        >
-                          Trigger Escalation
-                        </Button>
-                      )}
-                      {isEsc && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          loading={actionLoading === `res_esc_${g.id}`}
-                          onClick={() => handleResolveEscalate(g.id)}
-                        >
-                          Resolve & Resume
-                        </Button>
-                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       )}
+
+      {/* 4. OFFICERS ROSTER */}
+      {activeSection === 'officers' && (
+        <div className="space-y-6 animate-fade-in">
+          <Card
+            title="Department Field Officer Roster"
+            subtitle="Authoritative investigators enrolled under this department's jurisdiction"
+            headerAction={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddOfficerModal(true)}
+                className="font-bold"
+              >
+                + Add Officer
+              </Button>
+            }
+          >
+            {deptOfficers.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No officers currently enrolled in this department. Click "+ Add Officer" to enroll field officers.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">Officer Address</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Explorer</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {deptOfficers.map((officerAddr) => (
+                      <tr key={officerAddr} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                          {officerAddr}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="success" dot className="text-[10px]">Active</Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          <a
+                            href={getExplorerAddressUrl(officerAddr)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 underline font-mono text-[11px]"
+                          >
+                            Sepolia Etherscan ↗
+                          </a>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTransferTargetOfficer(officerAddr);
+                                setTransferTargetDeptId(departments.find((d) => d.id !== selectedDeptId)?.id || '');
+                              }}
+                              className="text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
+                            >
+                              Transfer
+                            </button>
+                            <span>•</span>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmRemoveOfficer(officerAddr)}
+                              className="text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* MODALS */}
+      {/* =================================================================== */}
+
+      {/* Assign Officer Modal */}
+      <Modal
+        isOpen={Boolean(assignTargetGrievance)}
+        onClose={() => setAssignTargetGrievance(null)}
+        title={`Assign Officer to Grievance #${assignTargetGrievance?.id}`}
+        subtitle={assignTargetGrievance?.title}
+      >
+        <form onSubmit={handleAssignOfficer} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Select Field Officer *
+            </label>
+            {deptOfficers.length > 0 ? (
+              <select
+                value={selectedOfficerForAssign}
+                onChange={(e) => setSelectedOfficerForAssign(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-mono outline-none"
+              >
+                {deptOfficers.map((o) => (
+                  <option key={o} value={o}>
+                    {shortenAddress(o, 6)} ({o})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-rose-600 font-semibold">
+                No officers in department. Please enroll an officer first.
+              </p>
+            )}
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setAssignTargetGrievance(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={actionLoading === 'assign'}
+              disabled={deptOfficers.length === 0}
+              className="font-bold"
+            >
+              Confirm Assignment
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reassign Officer Modal */}
+      <Modal
+        isOpen={Boolean(reassignTarget)}
+        onClose={() => setReassignTarget(null)}
+        title={`Reassign Grievance #${reassignTarget?.id}`}
+        subtitle={reassignTarget?.title}
+      >
+        <form onSubmit={handleReassignOfficer} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Select New Officer *
+            </label>
+            <select
+              value={newOfficerForReassign}
+              onChange={(e) => setNewOfficerForReassign(e.target.value)}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-mono outline-none"
+            >
+              {deptOfficers.map((o) => (
+                <option key={o} value={o}>
+                  {shortenAddress(o, 6)} {o.toLowerCase() === reassignTarget?.assignedOfficer?.toLowerCase() ? '(Current)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Reassignment Justification Reason *
+            </label>
+            <textarea
+              rows={3}
+              required
+              placeholder="State the reason for reassigning this case (logged on-chain)"
+              value={reassignReason}
+              onChange={(e) => setReassignReason(e.target.value)}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none resize-none"
+            />
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setReassignTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={actionLoading === 'reassign'}
+              className="font-bold"
+            >
+              Execute Reassignment
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reject Grievance Modal */}
+      <Modal
+        isOpen={Boolean(rejectTargetGrievance)}
+        onClose={() => setRejectTargetGrievance(null)}
+        title={`Reject Grievance #${rejectTargetGrievance?.id}?`}
+        subtitle="This will permanently close the case as administratively rejected"
+      >
+        <form onSubmit={handleRejectGrievance} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Rejection Reason *
+            </label>
+            <textarea
+              rows={3}
+              required
+              placeholder="Explain why this grievance is outside departmental jurisdiction or invalid"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none resize-none"
+            />
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setRejectTargetGrievance(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              size="sm"
+              loading={Boolean(actionLoading)}
+              className="font-bold"
+            >
+              Confirm Rejection
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Add Officer Modal */}
+      <Modal
+        isOpen={showAddOfficerModal}
+        onClose={() => setShowAddOfficerModal(false)}
+        title="Add Officer to Department"
+        subtitle={`Enrolls field officer into ${selectedDept?.name}`}
+      >
+        <form onSubmit={handleAddOfficer} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Officer Wallet Address (0x...) *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="0x..."
+              value={newOfficerAddress}
+              onChange={(e) => setNewOfficerAddress(e.target.value)}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-mono outline-none"
+            />
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowAddOfficerModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={actionLoading === 'add_officer'}
+              className="font-bold"
+            >
+              Enroll Officer
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Transfer Officer Modal */}
+      <Modal
+        isOpen={Boolean(transferTargetOfficer)}
+        onClose={() => setTransferTargetOfficer('')}
+        title="Transfer Officer to Another Department"
+        subtitle={`Officer: ${shortenAddress(transferTargetOfficer, 6)}`}
+      >
+        <form onSubmit={handleTransferOfficer} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Select Destination Department *
+            </label>
+            <select
+              value={transferTargetDeptId}
+              onChange={(e) => setTransferTargetDeptId(e.target.value)}
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none"
+            >
+              {departments
+                .filter((d) => d.id !== selectedDeptId)
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} (#{d.id})
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setTransferTargetOfficer('')}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={Boolean(actionLoading)}
+              className="font-bold"
+            >
+              Transfer Officer
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirm Remove Officer Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(confirmRemoveOfficer)}
+        onClose={() => setConfirmRemoveOfficer(null)}
+        onConfirm={executeRemoveOfficer}
+        title="Remove Officer?"
+        message={`Are you sure you want to remove officer ${shortenAddress(confirmRemoveOfficer, 6)} from ${selectedDept?.name}?`}
+        confirmText="Remove Officer"
+        variant="danger"
+        loading={actionLoading === `remove_${confirmRemoveOfficer}`}
+      />
     </div>
   );
 }

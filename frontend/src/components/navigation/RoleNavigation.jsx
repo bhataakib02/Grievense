@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useRoles } from '../../hooks/useRoles';
 import { useRouter } from '../../hooks/useRouter';
 import { Badge } from '../common/Badge';
@@ -11,9 +11,7 @@ export function RoleNavigation() {
     ROLE_METADATA,
   } = useRoles();
 
-  const { navigate } = useRouter();
-  const [activeTab, setActiveTab] = useState('overview');
-
+  const { currentRoute, navigate } = useRouter();
 
   if (!activeRoles || activeRoles.length === 0 || !currentRole) {
     return null;
@@ -22,12 +20,12 @@ export function RoleNavigation() {
   // Navigation tabs per role
   const roleNavItems = {
     CITIZEN: [
-      { id: 'overview', label: 'Dashboard Overview', path: '/citizen' },
-      { id: 'submit', label: 'Submit Grievance', path: '/citizen/submit' },
-      { id: 'verify', label: 'Public Verification', path: '/verify' },
+      { id: 'overview', label: 'My Grievances', path: '/citizen' },
+      { id: 'submit', label: '+ Submit Grievance', path: '/citizen/submit' },
+      { id: 'verify', label: 'Verify On-Chain', path: '/verify' },
     ],
     OFFICER: [
-      { id: 'overview', label: 'Officer Console', path: '/officer' },
+      { id: 'overview', label: 'Assigned Cases', path: '/officer' },
       { id: 'verify', label: 'Verify On-Chain', path: '/verify' },
     ],
     DEPARTMENT_ADMIN: [
@@ -35,24 +33,25 @@ export function RoleNavigation() {
       { id: 'verify', label: 'Verify On-Chain', path: '/verify' },
     ],
     SUPER_ADMIN: [
-      { id: 'overview', label: 'Super Admin Center', path: '/super-admin' },
+      { id: 'overview', label: 'Governance Center', path: '/super-admin' },
       { id: 'verify', label: 'Verify On-Chain', path: '/verify' },
+      { id: 'diagnostics', label: 'Blockchain Diagnostics', path: '/debug/blockchain' },
     ],
   };
 
   const navItems = roleNavItems[currentRole] || [];
 
   return (
-    <div className="bg-white border-b border-slate-200 -mt-8 sm:-mt-12 mb-8 shadow-2xs">
+    <div className="bg-white border-b border-slate-200/90 -mt-8 sm:-mt-12 mb-8 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Multi-role Switcher */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Active Console:
             </span>
             {activeRoles.length > 1 ? (
-              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                 {activeRoles.map((role) => {
                   const isSelected = currentRole === role;
                   const meta = ROLE_METADATA[role];
@@ -61,12 +60,13 @@ export function RoleNavigation() {
                       key={role}
                       onClick={() => {
                         setCurrentRole(role);
-                        navigate(meta.dashboardRoute.slice(1));
+                        const route = meta?.dashboardRoute || '/';
+                        navigate(route.startsWith('/') ? route : `/${route}`);
                       }}
                       type="button"
-                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-white text-blue-700 shadow-2xs'
+                          ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -77,7 +77,7 @@ export function RoleNavigation() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Badge variant={ROLE_METADATA[currentRole]?.badgeVariant}>
+                <Badge variant={ROLE_METADATA[currentRole]?.badgeVariant} dot>
                   {ROLE_METADATA[currentRole]?.label}
                 </Badge>
                 <span className="text-xs text-slate-500 hidden sm:inline">
@@ -88,28 +88,23 @@ export function RoleNavigation() {
           </div>
 
           {/* Quick Dashboard Action Links */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
             {navItems.map((item) => {
-              const isSelected = activeTab === item.id;
+              const isSelected =
+                currentRoute === item.path ||
+                (item.path !== '/' && currentRoute.startsWith(item.path));
               return (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    navigate(item.path);
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
+                  onClick={() => navigate(item.path)}
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-50 text-blue-700 font-semibold'
-                      : 'text-slate-600 hover:bg-slate-100'
+                      ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200/60'
+                      : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 border border-transparent'
                   }`}
                 >
                   <span>{item.label}</span>
-                  {item.badge && (
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-mono">
-                      {item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}

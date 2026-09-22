@@ -29,6 +29,7 @@ export function OfficerDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load officer assigned cases and entity metadata directly from smart contracts
   const loadOfficerCases = useCallback(async (isManualRefresh = false) => {
@@ -59,7 +60,6 @@ export function OfficerDashboard() {
     setError(null);
 
     try {
-      // Query departments and categories for human-readable labels
       const [assignedCases, activeDepts, activeCats] = await Promise.all([
         fetchOfficerGrievances(runner, address),
         fetchActiveDepartments(runner).catch(() => []),
@@ -91,7 +91,6 @@ export function OfficerDashboard() {
     };
   }, [loadOfficerCases]);
 
-  // Map department & category IDs to names
   const departmentMap = useMemo(() => {
     const map = {};
     departments.forEach((d) => {
@@ -108,19 +107,22 @@ export function OfficerDashboard() {
     return map;
   }, [categories]);
 
-  // Derived KPI metrics (calculated STRICTLY from real on-chain retrieved cases)
+  // Derived KPI metrics
   const stats = useMemo(() => {
     const total = cases.length;
     const underReview = cases.filter((c) => c.status === STATUSES.UNDER_REVIEW).length;
     const underInvestigation = cases.filter((c) => c.status === STATUSES.UNDER_INVESTIGATION).length;
     const resolutionProposed = cases.filter((c) => c.status === STATUSES.RESOLUTION_PROPOSED).length;
-    const citizenReview = cases.filter((c) => c.status === STATUSES.CITIZEN_REVIEW).length;
+    const resolved = cases.filter(
+      (c) => c.status === STATUSES.ACCEPTED || c.status === STATUSES.CLOSED || c.status === STATUSES.RESOLVED
+    ).length;
     const overdue = cases.filter(
       (c) =>
         c.slaDeadline > 0 &&
         currentTime > c.slaDeadline &&
         c.status !== STATUSES.CLOSED &&
-        c.status !== STATUSES.ACCEPTED
+        c.status !== STATUSES.ACCEPTED &&
+        c.status !== STATUSES.RESOLVED
     ).length;
 
     return {
@@ -128,386 +130,315 @@ export function OfficerDashboard() {
       underReview,
       underInvestigation,
       resolutionProposed,
-      citizenReview,
+      resolved,
       overdue,
     };
   }, [cases, currentTime]);
 
-  // Filter cases for the list
+  // Filter cases
   const filteredCases = useMemo(() => {
-    switch (activeFilter) {
-      case 'assigned':
-        return cases.filter(
-          (c) => c.status === STATUSES.ASSIGNED || c.status === STATUSES.UNDER_REVIEW
-        );
-      case 'investigating':
-        return cases.filter((c) => c.status === STATUSES.UNDER_INVESTIGATION);
-      case 'resolution':
-        return cases.filter(
-          (c) =>
-            c.status === STATUSES.RESOLUTION_PROPOSED || c.status === STATUSES.CITIZEN_REVIEW
-        );
-      case 'closed':
-        return cases.filter(
-          (c) => c.status === STATUSES.ACCEPTED || c.status === STATUSES.CLOSED
-        );
-      case 'overdue':
-        return cases.filter((c) => {
-          return (
-            c.slaDeadline > 0 &&
-            currentTime > c.slaDeadline &&
-            c.status !== STATUSES.CLOSED &&
-            c.status !== STATUSES.ACCEPTED
-          );
-        });
-      case 'all':
-      default:
-        return cases;
-    }
-  }, [cases, activeFilter, currentTime]);
+    return cases.filter((c) => {
+      if (activeFilter === 'assigned') {
+        if (c.status !== STATUSES.ASSIGNED && c.status !== STATUSES.UNDER_REVIEW) return false;
+      } else if (activeFilter === 'investigating') {
+        if (c.status !== STATUSES.UNDER_INVESTIGATION) return false;
+      } else if (activeFilter === 'resolution') {
+        if (c.status !== STATUSES.RESOLUTION_PROPOSED && c.status !== STATUSES.CITIZEN_REVIEW) return false;
+      } else if (activeFilter === 'resolved') {
+        if (c.status !== STATUSES.ACCEPTED && c.status !== STATUSES.CLOSED && c.status !== STATUSES.RESOLVED)
+          return false;
+      } else if (activeFilter === 'overdue') {
+        const isOverdue =
+          c.slaDeadline > 0 &&
+          currentTime > c.slaDeadline &&
+          c.status !== STATUSES.CLOSED &&
+          c.status !== STATUSES.ACCEPTED &&
+          c.status !== STATUSES.RESOLVED;
+        if (!isOverdue) return false;
+      }
 
-  // Unsupported Network State
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesTitle = c.title.toLowerCase().includes(q);
+        const matchesId = String(c.id).includes(q);
+        return matchesTitle || matchesId;
+      }
+
+      return true;
+    });
+  }, [cases, activeFilter, searchQuery, currentTime]);
+
   if (!isSupportedNetwork && targetChainId) {
     return (
       <div className="max-w-5xl mx-auto py-8">
         <Alert variant="warning" title="Unsupported Network Detected">
-          Your wallet is currently connected to an unsupported chain. Please switch to Chain ID {targetChainId} ({networkName}) to access the Officer Console.
+          Your wallet is currently connected to an unsupported chain. Please switch to Ethereum Sepolia (Chain ID {targetChainId}) to access the Officer Console.
         </Alert>
       </div>
     );
   }
 
-  // Wallet Disconnected State
   if (!isConnected || !address) {
     return (
-      <div className="max-w-5xl mx-auto py-12 text-center space-y-4">
-        <Card className="max-w-lg mx-auto py-10 px-6">
-          <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xl mx-auto mb-3">
+      <div className="max-w-xl mx-auto py-16 text-center space-y-4">
+        <div className="bg-white p-8 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl mx-auto">
             🛡️
           </div>
-          <h3 className="text-base font-bold text-slate-900">Wallet Connection Required</h3>
-          <p className="text-xs text-slate-600 mb-4">
-            Please connect your designated officer wallet to load your assigned case dossier from the blockchain.
+          <h2 className="text-xl font-bold text-slate-900">Wallet Connection Required</h2>
+          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+            Please connect your designated field officer wallet to inspect and investigate assigned grievances on Ethereum Sepolia.
           </p>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Officer Identity & Control Bar */}
-      <Card className="bg-slate-900 text-white border-0 shadow-lg">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
+      {/* Officer Identity & Top Banner */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="warning" className="bg-amber-500/20 text-amber-300 border-amber-500/40">
-                Officer Workspace
+            <div className="flex items-center gap-2">
+              <Badge variant="warning" dot className="font-bold text-xs uppercase">
+                Officer Console
               </Badge>
-              <span className="text-xs text-slate-300 font-mono bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                {networkName} (Chain ID: {chainId})
+              <span className="text-xs text-slate-400 font-mono">
+                Ethereum Sepolia ({chainId})
               </span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Officer Dashboard</h1>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Connected Officer:{' '}
-              <span className="font-mono font-semibold text-white break-all" title={address}>
-                {address}
-              </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Assigned Field Cases
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Field Officer:{' '}
+              <span className="font-mono font-semibold text-slate-800">{address}</span>
             </p>
           </div>
 
-          <div className="flex flex-col sm:items-end gap-2.5">
-            <div className="flex items-center gap-2">
-              <Badge variant="warning" className="text-xs font-semibold">
-                Role: OFFICER_ROLE
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => loadOfficerCases(true)}
-                disabled={isLoading || isRefreshing}
-                className="text-xs bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white"
-              >
-                {isRefreshing ? 'Reading Chain...' : '↻ Refresh Cases'}
-              </Button>
-            </div>
+          <div className="flex flex-col sm:items-end gap-2.5 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => loadOfficerCases(true)}
+              disabled={isLoading || isRefreshing}
+              className="font-bold"
+            >
+              {isRefreshing ? 'Reading Chain...' : '↻ Refresh Cases'}
+            </Button>
             <span className="text-[11px] text-slate-400">
-              Authoritative on-chain case management and investigations
+              Direct smart contract state queries
             </span>
           </div>
         </div>
-      </Card>
 
-      {/* SLA & Investigation Protocol Notice */}
-      <Alert variant="info" title="Deterministic SLA Enforcement Protocol">
-        Assigned grievances carry deterministic SLA targets enforced on-chain. If an investigation breaches its target deadline without a recorded resolution, the grievance becomes eligible for escalation in accordance with Department governance rules.
-      </Alert>
+        {/* 5-Column Metric KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 pt-6 text-xs">
+          <div
+            onClick={() => setActiveFilter('all')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'all'
+                ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Total Assigned</span>
+            <span className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1 block">
+              {stats.total}
+            </span>
+          </div>
 
-      {/* Case Summary KPIs (Derived from real contract records only) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Total Assigned</div>
-          <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">{stats.total}</div>
-        </div>
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Under Review</div>
-          <div className="text-xl sm:text-2xl font-bold text-amber-700 mt-1">{stats.underReview}</div>
-        </div>
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Investigating</div>
-          <div className="text-xl sm:text-2xl font-bold text-blue-700 mt-1">{stats.underInvestigation}</div>
-        </div>
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Proposed</div>
-          <div className="text-xl sm:text-2xl font-bold text-indigo-700 mt-1">{stats.resolutionProposed}</div>
-        </div>
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Citizen Review</div>
-          <div className="text-xl sm:text-2xl font-bold text-purple-700 mt-1">{stats.citizenReview}</div>
-        </div>
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Overdue SLA</div>
-          <div className={`text-xl sm:text-2xl font-bold mt-1 ${stats.overdue > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-            {stats.overdue}
+          <div
+            onClick={() => setActiveFilter('investigating')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'investigating'
+                ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Investigating</span>
+            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 mt-1 block">
+              {stats.underInvestigation}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setActiveFilter('resolution')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'resolution'
+                ? 'bg-amber-50/80 border-amber-200 ring-2 ring-amber-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Resolutions</span>
+            <span className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-1 block">
+              {stats.resolutionProposed}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setActiveFilter('resolved')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'resolved'
+                ? 'bg-emerald-50/70 border-emerald-200 ring-2 ring-emerald-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Resolved</span>
+            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1 block">
+              {stats.resolved}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setActiveFilter('overdue')}
+            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'overdue'
+                ? 'bg-rose-50/80 border-rose-200 ring-2 ring-rose-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Overdue SLA</span>
+            <span className={`text-xl sm:text-2xl font-extrabold mt-1 block ${stats.overdue > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+              {stats.overdue}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Case Management Workspace */}
-      <div className="space-y-4">
-        {/* Filters and Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900">Assigned Case Dossier</h2>
-            <Badge variant="neutral" className="text-xs font-mono font-semibold">
-              {filteredCases.length} {filteredCases.length === 1 ? 'case' : 'cases'}
-            </Badge>
-          </div>
+      {error && (
+        <Alert variant="danger" title="Error Loading Cases">
+          {error}
+        </Alert>
+      )}
 
-          {/* Filter Pills */}
-          <div className="flex items-center flex-wrap gap-1.5">
-            {[
-              { key: 'all', label: 'All Cases', count: stats.total },
-              { key: 'assigned', label: 'Pending / Review', count: stats.underReview },
-              { key: 'investigating', label: 'Under Investigation', count: stats.underInvestigation },
-              { key: 'resolution', label: 'In Resolution', count: stats.resolutionProposed + stats.citizenReview },
-              { key: 'overdue', label: 'Overdue SLA', count: stats.overdue },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveFilter(tab.key)}
-                className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  activeFilter === tab.key
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  activeFilter === tab.key ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Query Error State */}
-        {error && (
-          <Alert variant="danger" title="Smart Contract Read Failure">
-            <div className="space-y-2">
-              <p>{error}</p>
-              <Button variant="secondary" size="sm" onClick={() => loadOfficerCases(true)}>
-                Retry On-Chain Query
-              </Button>
-            </div>
-          </Alert>
-        )}
-
-        {/* Loading State */}
-        {isLoading && (
-          <Card>
-            <div className="text-center py-16 px-4 space-y-3">
-              <div className="animate-spin w-8 h-8 border-3 border-amber-600 border-t-transparent rounded-full mx-auto" />
-              <p className="text-sm font-semibold text-slate-700">
-                Querying assigned grievances directly from smart contract...
-              </p>
-              <p className="text-xs text-slate-400 font-mono">
-                Executing getGrievanceCount() & isAssignedOfficer() on GrievanceSystem.sol
-              </p>
-            </div>
-          </Card>
-        )}
-
-        {/* Empty State (Authentic On-Chain Zero State) */}
-        {!isLoading && !error && filteredCases.length === 0 && (
-          <Card>
-            <div className="text-center py-16 px-4 space-y-3 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl mx-auto">
-                📋
-              </div>
-              <h3 className="text-sm font-semibold text-slate-800">
-                {cases.length === 0 ? 'No Grievances Assigned' : 'No Cases Match Filter'}
-              </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                {cases.length === 0 ? (
-                  <>
-                    There are currently no grievances assigned to officer{' '}
-                    <span className="font-mono text-slate-700 font-semibold">{shortenAddress(address, 4)}</span> in{' '}
-                    <code className="font-mono text-[11px] bg-slate-200 px-1 py-0.5 rounded">GrievanceSystem.sol</code>.
-                    Cases assigned by Department Administrators will appear here automatically.
-                  </>
-                ) : (
-                  'No assigned cases match the selected status filter.'
-                )}
-              </p>
-              {cases.length > 0 && activeFilter !== 'all' && (
-                <Button variant="secondary" size="sm" onClick={() => setActiveFilter('all')} className="mt-2 text-xs">
-                  Show All Assigned Cases
-                </Button>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {/* Case List Display */}
-        {!isLoading && !error && filteredCases.length > 0 && (
-          <div className="space-y-3">
-            {filteredCases.map((item) => {
-              const statusMeta = STATUS_METADATA[item.status] || {
-                label: 'Unknown',
-                badgeVariant: 'default',
-              };
-              const priorityMeta = PRIORITY_METADATA[item.priority] || {
-                label: 'Standard',
-                badgeVariant: 'default',
-              };
-              const isOverdue =
-                item.slaDeadline > 0 &&
-                currentTime > item.slaDeadline &&
-                item.status !== STATUSES.CLOSED &&
-                item.status !== STATUSES.ACCEPTED;
-
-              const departmentName = departmentMap[item.departmentId] || `Dept #${item.departmentId}`;
-              const categoryName = categoryMap[item.categoryId] || `Category #${item.categoryId}`;
-
-              return (
-                <div
-                  key={item.id}
-                  className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs hover:shadow-xs transition-shadow space-y-3"
+      {/* Case Management Table */}
+      <Card
+        title="Assigned Grievance Dossier"
+        subtitle="Review assigned cases, record on-chain investigation notes, attach evidence, and propose remedies"
+      >
+        <div className="space-y-4">
+          {/* Filter Bar & Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {[
+                { id: 'all', label: `All (${cases.length})` },
+                { id: 'assigned', label: `New / Review (${stats.underReview})` },
+                { id: 'investigating', label: `Investigating (${stats.underInvestigation})` },
+                { id: 'resolution', label: `Resolutions (${stats.resolutionProposed})` },
+                { id: 'resolved', label: `Resolved (${stats.resolved})` },
+                { id: 'overdue', label: `Overdue (${stats.overdue})` },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setActiveFilter(f.id)}
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl whitespace-nowrap transition-colors cursor-pointer ${
+                    activeFilter === f.id
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="neutral" className="font-mono font-bold text-xs">
-                        #{item.id}
-                      </Badge>
-                      <Badge variant={statusMeta.badgeVariant} className="text-xs">
-                        {statusMeta.label}
-                      </Badge>
-                      <Badge variant={priorityMeta.badgeVariant} className="text-xs">
-                        {priorityMeta.label} Priority
-                      </Badge>
-                      {isOverdue && (
-                        <span className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded flex items-center gap-1">
-                          ⚠️ SLA Breached
-                        </span>
-                      )}
-                      {item.reopenCount > 0 && (
-                        <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded">
-                          Reopened ({item.reopenCount})
-                        </span>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => navigate(`/officer/grievance/${item.id}`)}
-                      className="text-xs self-start sm:self-auto font-semibold"
-                    >
-                      View Case Details →
-                    </Button>
-                  </div>
-
-                  <div>
-                    <h3
-                      onClick={() => navigate(`/officer/grievance/${item.id}`)}
-                      className="text-base font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer"
-                    >
-                      {item.title}
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-slate-100 text-slate-600">
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Department</span>
-                      <span className="font-medium text-slate-800 truncate block" title={departmentName}>
-                        {departmentName}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Category</span>
-                      <span className="font-medium text-slate-800 truncate block" title={categoryName}>
-                        {categoryName}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Citizen</span>
-                      <span className="font-mono text-slate-800 truncate block" title={item.citizen}>
-                        {shortenAddress(item.citizen, 4)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">SLA Deadline</span>
-                      <span className={`font-mono block truncate ${isOverdue ? 'text-rose-600 font-bold' : 'text-slate-800'}`}>
-                        {formatTimestamp(item.slaDeadline)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-400 border-t border-slate-50">
-                    <div>
-                      Created: {formatTimestamp(item.createdAt)} | Updated: {formatTimestamp(item.updatedAt)}
-                    </div>
-                    <div>
-                      Resolution ID: {item.currentResolutionId > 0 ? `#${item.currentResolutionId}` : 'None pending'}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Protocol & Verification Reference Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card title="Investigation Protocol">
-          <ul className="text-xs space-y-2 text-slate-600 list-disc list-inside leading-relaxed">
-            <li>Review the citizen's initial claim and inspect verified IPFS commitments.</li>
-            <li>Initiate formal review on-chain when starting active evaluation.</li>
-            <li>Conduct field inspections and append cryptographic investigation notes.</li>
-            <li>Submit immutable resolutions with dual-reference verification (CID + Keccak-256).</li>
-            <li>Track SLA deadlines to ensure compliance before automated escalation thresholds.</li>
-          </ul>
-        </Card>
-
-        <Card title="Evidence & IPFS Standards">
-          <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
-            <p>
-              Evidence artifacts submitted by officers are pinned to decentralized storage with a SHA-256 hash committed directly to the smart contract:
-            </p>
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 font-mono text-[11px] text-slate-700 space-y-1">
-              <div>Content Addressing: IPFS CIDv1 (base32)</div>
-              <div>Digest Commitment: bytes32 SHA-256</div>
-              <div>Audit Action: EVIDENCE_ADDED / INVESTIGATION_NOTE</div>
+                  {f.label}
+                </button>
+              ))}
             </div>
+
+            <input
+              type="text"
+              placeholder="Search by title or ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="text-xs px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none w-full sm:w-64"
+            />
           </div>
-        </Card>
-      </div>
+
+          {/* Cases Table */}
+          {isLoading ? (
+            <div className="text-center py-12 text-xs text-slate-400 space-y-2">
+              <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto" />
+              <span>Loading assigned cases from Sepolia...</span>
+            </div>
+          ) : filteredCases.length > 0 ? (
+            <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
+                  <tr>
+                    <th className="py-3 px-4">ID</th>
+                    <th className="py-3 px-4">Title</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Priority</th>
+                    <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">SLA Deadline</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredCases.map((c) => {
+                    const sMeta = STATUS_METADATA[c.status] || { label: 'Unknown', badgeVariant: 'default' };
+                    const pMeta = PRIORITY_METADATA[c.priority] || { label: 'Medium', badgeVariant: 'default' };
+                    const isBreached =
+                      c.slaDeadline > 0 &&
+                      currentTime > c.slaDeadline &&
+                      c.status !== STATUSES.CLOSED &&
+                      c.status !== STATUSES.ACCEPTED;
+
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                          #{c.id}
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-900 max-w-xs truncate">
+                          {c.title}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <Badge variant={sMeta.badgeVariant} dot className="text-[10px]">
+                            {sMeta.label}
+                          </Badge>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <Badge variant={pMeta.badgeVariant} className="text-[10px]">
+                            {pMeta.label}
+                          </Badge>
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-slate-700">
+                          {departmentMap[c.departmentId] || `Dept #${c.departmentId}`}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-[11px]">
+                          <span className={isBreached ? 'text-rose-600 font-bold' : 'text-slate-600'}>
+                            {formatTimestamp(c.slaDeadline)}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <Button
+                            size="xs"
+                            variant="primary"
+                            onClick={() => navigate(`/officer/grievance/${c.id}`)}
+                            className="font-bold"
+                          >
+                            Manage Case →
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 px-4 space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl mx-auto">
+                🔎
+              </div>
+              <h4 className="text-sm font-bold text-slate-700">No Assigned Cases Found</h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                You currently have no cases assigned matching the filter. When department administrators assign grievances to your address, they will appear here.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
