@@ -16,6 +16,7 @@ import {
   fetchActiveCategories,
   verifyAuditRecord,
 } from '../services/grievanceService';
+import { getAdminDepartments, fetchDepartment } from '../services/departmentService';
 import { fetchFromIpfs, computeContentHash } from '../services/ipfs';
 import { CONTRACT_ADDRESSES } from '../contracts/addresses';
 
@@ -33,10 +34,9 @@ export function GrievanceDetails({ grievanceId }) {
   const { currentRole, ROLES } = useRoles();
   const { navigate } = useRouter();
 
-  const isOfficerOrAdmin =
+  const isAdmin =
     currentRole === ROLES.SUPER_ADMIN ||
-    currentRole === ROLES.DEPARTMENT_ADMIN ||
-    currentRole === ROLES.OFFICER;
+    currentRole === ROLES.DEPARTMENT_ADMIN;
 
   const [grievance, setGrievance] = useState(null);
   const [departmentName, setDepartmentName] = useState('');
@@ -44,6 +44,8 @@ export function GrievanceDetails({ grievanceId }) {
   const [auditInfo, setAuditInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [adminDeptIds, setAdminDeptIds] = useState([]);
+  const [isCheckingDeptAdmin, setIsCheckingDeptAdmin] = useState(false);
 
   // Expandable Blockchain Details state
   const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
@@ -55,6 +57,15 @@ export function GrievanceDetails({ grievanceId }) {
   const [isFromNetwork, setIsFromNetwork] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [retrievedContent, setRetrievedContent] = useState(null);
+
+  // Immediate state wipe on account / ID change
+  useEffect(() => {
+    setGrievance(null);
+    setRetrievedContent(null);
+    setVerificationState('IDLE');
+    setAdminDeptIds([]);
+    setError(null);
+  }, [address, grievanceId]);
 
   const loadData = useCallback(async () => {
     if (!grievanceId) return;
@@ -70,6 +81,46 @@ export function GrievanceDetails({ grievanceId }) {
 
       const g = await fetchGrievanceDetails(runner, grievanceId);
       setGrievance(g);
+
+      // Verify Department Admin isolation if connected as Department Admin
+      if (currentRole === ROLES.DEPARTMENT_ADMIN && address) {
+        setIsCheckingDeptAdmin(true);
+        try {
+          const deptIds = await getAdminDepartments(runner, address);
+          if (deptIds && deptIds.length > 0) {
+            setAdminDeptIds(deptIds.map(Number));
+          } else {
+            const dept = await fetchDepartment(runner, g.departmentId);
+            if (dept?.admin && dept.admin.toLowerCase() === address.toLowerCase()) {
+              setAdminDeptIds([Number(g.departmentId)]);
+            } else {
+              setAdminDeptIds([]);
+            }
+          }
+        } catch (adminErr) {
+          console.warn('Failed to verify admin department membership:', adminErr);
+          setAdminDeptIds([]);
+        } finally {
+          setIsCheckingDeptAdmin(false);
+        }
+      }
+
+      // Auto-fetch off-chain description from IPFS so citizen/officer sees the statement immediately
+      if (g.descriptionCid) {
+        fetchFromIpfs(g.descriptionCid)
+          .then(({ content: rawPayload }) => {
+            let parsed = null;
+            try {
+              parsed = JSON.parse(rawPayload);
+            } catch {
+              parsed = { description: rawPayload };
+            }
+            setRetrievedContent(parsed);
+          })
+          .catch((e) => {
+            console.warn('Auto-fetch description from IPFS failed:', e);
+          });
+      }
 
       // Fetch department and category names for human readability
       try {
@@ -218,6 +269,69 @@ export function GrievanceDetails({ grievanceId }) {
         </Alert>
         <Button variant="secondary" onClick={() => navigate(getBackRoute())}>
           ← Return to Console
+        </Button>
+      </div>
+    );
+  }
+
+  // Cryptographic authorization & role isolation guards
+  const isCitizenRole = currentRole === ROLES.CITIZEN;
+  const isOfficerRole = currentRole === ROLES.OFFICER;
+  const isDeptAdminRole = currentRole === ROLES.DEPARTMENT_ADMIN;
+  const isSuperAdminRole = currentRole === ROLES.SUPER_ADMIN;
+
+  const isAuthorizedDeptAdmin = adminDeptIds.includes(Number(grievance?.departmentId));
+  const effectiveIsAdmin = isSuperAdminRole || (isDeptAdminRole && isAuthorizedDeptAdmin);
+
+  const isCitizenOwner = Boolean(
+    grievance.citizen && address && grievance.citizen.toLowerCase() === address.toLowerCase()
+  );
+  const isAssignedOfficer = Boolean(
+    grievance.assignedOfficer &&
+      address &&
+      grievance.assignedOfficer.toLowerCase() === address.toLowerCase()
+  );
+  const canManageInvestigation = effectiveIsAdmin || isAssignedOfficer;
+
+  // Department Admin Isolation: Dept Admin can access ONLY grievances of their assigned department
+  if (isDeptAdminRole && !isSuperAdminRole && !isCheckingDeptAdmin) {
+    if (!isAuthorizedDeptAdmin) {
+      return (
+        <div className="max-w-5xl mx-auto space-y-4 py-8 animate-fade-in">
+          <Alert variant="danger" title="Access Denied — Department Isolation">
+            You are only authorized to view grievances belonging to your assigned department.
+          </Alert>
+          <Button variant="secondary" onClick={() => navigate(getBackRoute())}>
+            ← Return to Department Console
+          </Button>
+        </div>
+      );
+    }
+  }
+
+  // Citizen Isolation: Citizen can interact only with grievances created by that citizen
+  if (isCitizenRole && !isCitizenOwner && !effectiveIsAdmin && !isAssignedOfficer) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-4 py-8">
+        <Alert variant="danger" title="Access Denied — Citizen Privacy Isolation">
+          You are connected as a Citizen. Citizens are authorized to access only grievances submitted by their own wallet address ({address}).
+        </Alert>
+        <Button variant="secondary" onClick={() => navigate(getBackRoute())}>
+          ← Return to My Grievances
+        </Button>
+      </div>
+    );
+  }
+
+  // Officer Isolation: Officer can operate ONLY on grievances assigned to that officer
+  if (isOfficerRole && !isAssignedOfficer && !effectiveIsAdmin && !isCitizenOwner) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-4 py-8">
+        <Alert variant="danger" title="Access Denied — Officer Isolation">
+          You are connected as a Field Officer. Field officers are authorized to inspect and operate only on grievances specifically assigned to their address ({address}).
+        </Alert>
+        <Button variant="secondary" onClick={() => navigate(getBackRoute())}>
+          ← Return to Assigned Cases
         </Button>
       </div>
     );
@@ -459,7 +573,7 @@ export function GrievanceDetails({ grievanceId }) {
           runner={runner}
           signer={signer}
           userAddress={address}
-          isOfficerOrAdmin={isOfficerOrAdmin}
+          isOfficerOrAdmin={canManageInvestigation}
         />
 
         {/* Evidence Panel */}
@@ -468,7 +582,7 @@ export function GrievanceDetails({ grievanceId }) {
           runner={runner}
           signer={signer}
           userAddress={address}
-          isOfficerOrAdmin={isOfficerOrAdmin}
+          isOfficerOrAdmin={canManageInvestigation}
         />
 
         {/* 4. EXPANDABLE BLOCKCHAIN DETAILS SECTION */}

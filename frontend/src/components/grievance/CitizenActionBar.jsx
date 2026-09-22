@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Alert } from '../common/Alert';
+import { ethers } from 'ethers';
 import {
   STATUSES,
   acceptResolution,
@@ -67,7 +68,8 @@ export function CitizenActionBar({ grievance, signer, userAddress, onActionSucce
       setLoadingAction('reject');
       setError(null);
       setSuccessMsg('');
-      await rejectResolution(signer, grievance.id, rejectReason.trim());
+      const reasonHash = ethers.keccak256(ethers.toUtf8Bytes(rejectReason.trim()));
+      await rejectResolution(signer, grievance.id, reasonHash);
       setSuccessMsg('Resolution rejected. You may now choose to reopen the grievance.');
       setShowRejectForm(false);
       setRejectReason('');
@@ -89,7 +91,7 @@ export function CitizenActionBar({ grievance, signer, userAddress, onActionSucce
       setLoadingAction('reopen');
       setError(null);
       setSuccessMsg('');
-      await reopenGrievance(signer, grievance.id, reopenReason.trim());
+      await reopenGrievance(signer, grievance.id);
       setSuccessMsg('Grievance reopened successfully! Returned for further handling.');
       setShowReopenForm(false);
       setReopenReason('');

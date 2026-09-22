@@ -88,8 +88,8 @@ async function runTests() {
   await (await deptManager.connect(superAdmin).createDepartment("Water Dept", deptAdminB.address)).wait();      // Dept 2
 
   // Create Categories
-  await (await deptManager.connect(superAdmin).createCategory("Waste", "Garbage collection")).wait();          // Cat 1
-  await (await deptManager.connect(superAdmin).createCategory("Leaks", "Water leaks")).wait();                 // Cat 2
+  await (await deptManager.connect(superAdmin)["createCategory(string,string)"]("Waste", "Garbage collection")).wait();          // Cat 1
+  await (await deptManager.connect(superAdmin)["createCategory(string,string)"]("Leaks", "Water leaks")).wait();                 // Cat 2
 
   console.log("Contracts deployed and basic entities created.\n");
 

@@ -96,11 +96,10 @@ export function OfficerActionBar({ grievance, signer, userAddress, onActionSucce
 
       const ipfsResult = await uploadToIpfs(payload);
 
-      // Submit on-chain
+      // 2. Submit on-chain proposal (GrievanceSystem.submitResolution)
       await submitResolution(
         signer,
         grievance.id,
-        resolutionTitle.trim(),
         ipfsResult.cid,
         ipfsResult.contentHash
       );

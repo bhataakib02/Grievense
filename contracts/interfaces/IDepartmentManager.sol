@@ -17,6 +17,7 @@ interface IDepartmentManager {
     function transferOfficerDepartment(address officer, uint256 fromDepartmentId, uint256 toDepartmentId) external;
 
     function createCategory(string calldata name, string calldata description) external returns (uint256);
+    function createCategory(uint256 departmentId, string calldata name, string calldata description) external returns (uint256);
     function updateCategory(uint256 categoryId, string calldata name, string calldata description) external;
     function deactivateCategory(uint256 categoryId) external;
     function reactivateCategory(uint256 categoryId) external;
@@ -40,4 +41,6 @@ interface IDepartmentManager {
     function getCategoryCount() external view returns (uint256);
     function categoryExists(uint256 categoryId) external view returns (bool);
     function isCategoryActive(uint256 categoryId) external view returns (bool);
+    function getDepartmentCategories(uint256 departmentId) external view returns (uint256[] memory);
+    function getCategoryDepartment(uint256 categoryId) external view returns (uint256);
 }

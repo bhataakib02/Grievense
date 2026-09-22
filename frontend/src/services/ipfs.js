@@ -215,20 +215,19 @@ export async function uploadText(textContent) {
     }
   }
 
-  // 2. Check for secure server-side upload proxy
-  // Third-party pinning services (e.g. Pinata) are accessed through this server-side proxy
+  // 2. Check for secure server-side upload proxy (FastAPI backend with Pinata)
+  // Third-party pinning services (Pinata) are accessed through this server-side proxy
   // where API keys and JWTs are stored securely out of browser reach.
   if (env.uploadUrl) {
     try {
+      const formData = new FormData();
+      const blob = new Blob([textContent], { type: 'application/json' });
+      formData.append('file', blob, `grievance-${contentHash.slice(2, 10)}.json`);
+
       const res = await fetch(env.uploadUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: textContent,
-          contentHash,
-          cid: localCid,
-        }),
-        signal: AbortSignal.timeout(10000),
+        body: formData,
+        signal: AbortSignal.timeout(30000),
       });
 
       if (res.ok) {
@@ -242,9 +241,10 @@ export async function uploadText(textContent) {
           gatewayUrl,
           persisted: true,
           mode: 'IPFS_PUBLISHED',
-          provider: 'SECURE_UPLOAD_PROXY',
+          provider: 'FASTAPI_PINATA_PROXY',
         };
       }
+      console.warn('Secure IPFS upload proxy returned non-OK status:', res.status);
     } catch (err) {
       console.warn('Secure IPFS upload proxy failed:', err.message);
     }
@@ -330,6 +330,40 @@ export async function uploadFile(file) {
       }
     } catch (err) {
       console.warn('File upload to IPFS node failed:', err.message);
+    }
+  }
+
+  // Check for secure server-side upload proxy (FastAPI backend with Pinata)
+  if (env.uploadUrl) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(env.uploadUrl, {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const cid = json.cid || json.Hash || localCid;
+        const gatewayUrl = json.gatewayUrl || (env.gatewayUrl ? `${env.gatewayUrl.replace(/\/$/, '')}/ipfs/${cid}` : `https://ipfs.io/ipfs/${cid}`);
+
+        return {
+          cid,
+          contentHash,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          persisted: true,
+          gatewayUrl,
+          provider: 'FASTAPI_PINATA_PROXY',
+        };
+      }
+      console.warn('Backend IPFS upload proxy returned non-OK status:', res.status);
+    } catch (err) {
+      console.warn('Backend IPFS upload proxy failed for file:', err.message);
     }
   }
 

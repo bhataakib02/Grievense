@@ -34,7 +34,8 @@ import {
     EvidenceNotFound,
     ResolutionNotFound,
     ResolutionAlreadyPending,
-    ValueOutOfRange
+    ValueOutOfRange,
+    CategoryNotInDepartment
 } from "./GrievanceTypes.sol";
 
 /**
@@ -408,35 +409,7 @@ contract GrievanceSystem {
         string calldata descriptionCid,
         bytes32 descriptionHash
     ) external returns (uint256 grievanceId) {
-        // Authorization check: non-zero wallet address (permissionless citizen model)
-        if (msg.sender == address(0)) {
-            revert ZeroAddressNotAllowed();
-        }
-
-        // Validate organizational entities
-        if (!departmentManager.categoryExists(categoryId)) {
-            revert CategoryNotFound(categoryId);
-        }
-        if (!departmentManager.isCategoryActive(categoryId)) {
-            revert CategoryNotActive(categoryId);
-        }
-        if (!departmentManager.departmentExists(departmentId)) {
-            revert DepartmentNotFound(departmentId);
-        }
-        if (!departmentManager.isDepartmentActive(departmentId)) {
-            revert DepartmentNotActive(departmentId);
-        }
-
-        // Validate content
-        if (bytes(title).length == 0 || bytes(title).length > 200) {
-            revert InvalidTitle();
-        }
-        if (bytes(descriptionCid).length == 0) {
-            revert EmptyIPFSCid();
-        }
-        if (descriptionHash == bytes32(0)) {
-            revert EmptyContentHash();
-        }
+        _validateGrievanceCreation(categoryId, departmentId, title, descriptionCid, descriptionHash);
 
         grievanceId = _nextGrievanceId++;
         uint64 now_ = uint64(block.timestamp);
@@ -1446,5 +1419,30 @@ contract GrievanceSystem {
         g.updatedAt = uint64(block.timestamp);
 
         emit StatusChanged(grievanceId, oldStatus, newStatus, msg.sender, g.updatedAt);
+    }
+
+    /**
+     * @dev Internal helper to validate input parameters for grievance creation without blowing the stack.
+     */
+    function _validateGrievanceCreation(
+        uint256 categoryId,
+        uint256 departmentId,
+        string calldata title,
+        string calldata descriptionCid,
+        bytes32 descriptionHash
+    ) internal view {
+        if (msg.sender == address(0)) revert ZeroAddressNotAllowed();
+
+        if (!departmentManager.categoryExists(categoryId)) revert CategoryNotFound(categoryId);
+        if (!departmentManager.isCategoryActive(categoryId)) revert CategoryNotActive(categoryId);
+        if (!departmentManager.departmentExists(departmentId)) revert DepartmentNotFound(departmentId);
+        if (!departmentManager.isDepartmentActive(departmentId)) revert DepartmentNotActive(departmentId);
+
+        uint256 catDept = departmentManager.getCategoryDepartment(categoryId);
+        if (catDept != 0 && catDept != departmentId) revert CategoryNotInDepartment(categoryId, departmentId);
+
+        if (bytes(title).length == 0 || bytes(title).length > 200) revert InvalidTitle();
+        if (bytes(descriptionCid).length == 0) revert EmptyIPFSCid();
+        if (descriptionHash == bytes32(0)) revert EmptyContentHash();
     }
 }

@@ -1,9 +1,21 @@
+import { ethers } from 'ethers';
 import {
   getGrievanceSystemContract,
   getDepartmentManagerContract,
   getAuditTrailContract,
 } from './blockchain.js';
 import { isContractConfigured } from '../contracts/addresses.js';
+
+/**
+ * Defensive helper to ensure a parameter is a valid bytes32 hex string.
+ * If not, hashes the UTF-8 representation using keccak256.
+ */
+function _ensureBytes32(val, fallback = 'default') {
+  if (typeof val === 'string' && ethers.isHexString(val, 32)) {
+    return val;
+  }
+  return ethers.keccak256(ethers.toUtf8Bytes(String(val || fallback)));
+}
 
 /**
  * Exact Priority enum definitions matching GrievanceTypes.sol
@@ -76,11 +88,12 @@ export const STATUS_METADATA = {
 };
 
 /**
- * Maps contract errors to user-friendly notifications.
+ * Maps contract errors to user-friendly notifications using ethers v6 interface error parsing.
  * @param {any} err
+ * @param {import('ethers').Contract|null} contract
  * @returns {string}
  */
-export function parseContractError(err) {
+export function parseContractError(err, contract = null) {
   if (!err) return 'An unknown error occurred.';
 
   // MetaMask rejection
@@ -93,69 +106,91 @@ export function parseContractError(err) {
     return 'Insufficient ETH balance in your wallet to pay for transaction gas fees.';
   }
 
-  // Contract custom errors
-  const errString = String(err.message || err.shortMessage || err);
+  // Check direct revert name if already parsed by ethers v6
+  let customErrorName = err?.revert?.name || null;
 
-  if (errString.includes('Unauthorized') || errString.includes('isCitizen')) {
-    return 'Unauthorized: Your wallet is not registered as a Citizen on-chain. Please complete citizen registration first.';
-  }
-  if (errString.includes('InvalidTitle')) {
-    return 'Title is invalid. It must be between 1 and 200 UTF-8 bytes.';
-  }
-  if (errString.includes('EmptyIPFSCid')) {
-    return 'IPFS CID is required and cannot be empty.';
-  }
-  if (errString.includes('EmptyContentHash')) {
-    return 'Description content hash is required.';
-  }
-  if (errString.includes('DepartmentNotFound')) {
-    return 'The selected department was not found on the blockchain.';
-  }
-  if (errString.includes('DepartmentNotActive')) {
-    return 'The selected department is currently deactivated and cannot accept new grievances.';
-  }
-  if (errString.includes('CategoryNotFound')) {
-    return 'The selected grievance category was not found on the blockchain.';
-  }
-  if (errString.includes('CategoryNotActive')) {
-    return 'The selected category is currently deactivated.';
-  }
-  if (errString.includes('AlreadyRegistered')) {
-    return 'Wallet is already registered in RoleManager.';
+  // Try extracting hex data from error payload and parsing with contract interface
+  if (!customErrorName && contract?.interface) {
+    const rawData =
+      err?.data ||
+      err?.info?.error?.data ||
+      err?.error?.data ||
+      err?.payload?.params?.[0]?.data;
+    if (rawData && typeof rawData === 'string' && rawData.startsWith('0x')) {
+      try {
+        const parsed = contract.interface.parseError(rawData);
+        if (parsed) customErrorName = parsed.name;
+      } catch {}
+    }
   }
 
-  if (errString.includes('InvalidStatusTransition')) {
-    return 'Invalid status transition: The grievance is not in the required state for this action.';
+  const errString = `${err?.reason || ''} ${err?.message || ''} ${err?.shortMessage || ''} ${customErrorName || ''}`;
+
+  if (customErrorName === 'CategoryNotInDepartment' || errString.includes('CategoryNotInDepartment')) {
+    return 'The selected category does not belong to the selected department.';
   }
-  if (errString.includes('NotAssignedOfficer')) {
-    return 'You are not the assigned officer for this grievance.';
+  if (customErrorName === 'NotADepartmentAdmin' || errString.includes('NotADepartmentAdmin')) {
+    return 'This wallet does not hold the Department Admin role for this department.';
   }
-  if (errString.includes('NotGrievanceOwner')) {
-    return 'You are not the citizen who filed this grievance.';
-  }
-  if (errString.includes('GrievanceAlreadyAssigned')) {
-    return 'This grievance is already assigned to an officer.';
-  }
-  if (errString.includes('OfficerNotInDepartment')) {
-    return 'The selected officer is not a member of this grievance\'s department.';
-  }
-  if (errString.includes('ResolutionAlreadyPending')) {
-    return 'A resolution is already pending review for this grievance.';
-  }
-  if (errString.includes('ResolutionNotFound')) {
-    return 'No pending resolution found for this grievance.';
-  }
-  if (errString.includes('EvidenceAlreadyRevoked')) {
-    return 'This evidence item has already been revoked.';
-  }
-  if (errString.includes('CannotReassignToSameOfficer')) {
+  if (customErrorName === 'CannotReassignToSameOfficer' || errString.includes('CannotReassignToSameOfficer')) {
     return 'Cannot reassign to the same officer who is already assigned.';
   }
-  if (errString.includes('SLANotBreached')) {
+  if (customErrorName === 'EvidenceAlreadyRevoked' || errString.includes('EvidenceAlreadyRevoked')) {
+    return 'This evidence item has already been revoked.';
+  }
+  if (customErrorName === 'InvalidStatusTransition' || errString.includes('InvalidStatusTransition')) {
+    return 'Invalid status transition: The grievance is not in the required state for this action.';
+  }
+  if (customErrorName === 'NotAssignedOfficer' || errString.includes('NotAssignedOfficer')) {
+    return 'You are not the assigned officer for this grievance.';
+  }
+  if (customErrorName === 'NotGrievanceOwner' || errString.includes('NotGrievanceOwner')) {
+    return 'You are not the citizen who filed this grievance.';
+  }
+  if (customErrorName === 'GrievanceAlreadyAssigned' || errString.includes('GrievanceAlreadyAssigned')) {
+    return 'This grievance is already assigned to an officer.';
+  }
+  if (customErrorName === 'OfficerNotInDepartment' || errString.includes('OfficerNotInDepartment')) {
+    return 'The selected officer is not a member of this grievance\'s department.';
+  }
+  if (customErrorName === 'ResolutionAlreadyPending' || errString.includes('ResolutionAlreadyPending')) {
+    return 'A resolution is already pending review for this grievance.';
+  }
+  if (customErrorName === 'ResolutionNotFound' || errString.includes('ResolutionNotFound')) {
+    return 'No pending resolution found for this grievance.';
+  }
+  if (customErrorName === 'SLANotBreached' || errString.includes('SLANotBreached')) {
     return 'The SLA deadline has not been breached yet.';
   }
-  if (errString.includes('AlreadyEscalated')) {
+  if (customErrorName === 'AlreadyEscalated' || errString.includes('AlreadyEscalated')) {
     return 'This grievance has already been escalated.';
+  }
+  if (customErrorName === 'DepartmentNotFound' || errString.includes('DepartmentNotFound')) {
+    return 'The selected department was not found on the blockchain.';
+  }
+  if (customErrorName === 'DepartmentNotActive' || errString.includes('DepartmentNotActive')) {
+    return 'The selected department is currently deactivated and cannot accept new grievances.';
+  }
+  if (customErrorName === 'CategoryNotFound' || errString.includes('CategoryNotFound')) {
+    return 'The selected grievance category was not found on the blockchain.';
+  }
+  if (customErrorName === 'CategoryNotActive' || errString.includes('CategoryNotActive')) {
+    return 'The selected category is currently deactivated.';
+  }
+  if (customErrorName === 'InvalidTitle' || errString.includes('InvalidTitle')) {
+    return 'Title is invalid. It must be between 1 and 200 UTF-8 bytes.';
+  }
+  if (customErrorName === 'EmptyIPFSCid' || errString.includes('EmptyIPFSCid')) {
+    return 'IPFS CID is required and cannot be empty.';
+  }
+  if (customErrorName === 'EmptyContentHash' || errString.includes('EmptyContentHash')) {
+    return 'Description content hash is required.';
+  }
+  if (customErrorName === 'AlreadyRegistered' || errString.includes('AlreadyRegistered')) {
+    return 'Wallet is already registered in RoleManager.';
+  }
+  if (customErrorName === 'Unauthorized' || errString.includes('Unauthorized') || errString.includes('isCitizen')) {
+    return 'Unauthorized: Your wallet lacks the required permissions for this action.';
   }
 
   return err.shortMessage || err.message || 'Transaction failed on the blockchain.';
@@ -256,9 +291,10 @@ export async function fetchActiveCategories(runner) {
 
   return results
     .map((cat, index) => ({
-      id: index + 1,
+      id: Number(cat.id ?? (index + 1)),
       name: cat.name,
       description: cat.description,
+      departmentId: Number(cat.departmentId ?? 0),
       isActive: Boolean(cat.isActive),
     }))
     .filter((cat) => cat.isActive);
@@ -299,13 +335,14 @@ export async function sendGrievanceTransaction(signer, {
 
   // This call triggers MetaMask. It resolves only AFTER the user signs
   // and the transaction is broadcast to the network mempool.
+  const validHash = _ensureBytes32(descriptionHash, descriptionCid);
   const tx = await grievanceContract.createGrievance(
     categoryId,
     departmentId,
     priority,
     title,
     descriptionCid,
-    descriptionHash
+    validHash
   );
 
   return { tx, grievanceContract };
@@ -682,8 +719,9 @@ export async function transitionToInvestigation(signer, grievanceId) {
  * @returns {Promise<{ receipt: import('ethers').TransactionReceipt, noteId: number|null }>}
  */
 export async function addInvestigationNote(signer, grievanceId, contentCid, contentHash) {
+  const validHash = _ensureBytes32(contentHash, contentCid);
   const contract = getGrievanceSystemContract(signer);
-  const tx = await contract.addInvestigationNote(grievanceId, contentCid, contentHash);
+  const tx = await contract.addInvestigationNote(grievanceId, contentCid, validHash);
   const receipt = await tx.wait();
 
   let noteId = null;
@@ -767,8 +805,9 @@ export const EVIDENCE_TYPE_LABELS = {
  * @returns {Promise<{ receipt: import('ethers').TransactionReceipt, evidenceId: number|null }>}
  */
 export async function addEvidence(signer, grievanceId, evidenceType, ipfsCid, contentHash) {
+  const validHash = _ensureBytes32(contentHash, ipfsCid);
   const contract = getGrievanceSystemContract(signer);
-  const tx = await contract.addEvidence(grievanceId, evidenceType, ipfsCid, contentHash);
+  const tx = await contract.addEvidence(grievanceId, evidenceType, ipfsCid, validHash);
   const receipt = await tx.wait();
 
   let evidenceId = null;
@@ -843,9 +882,17 @@ export const RESOLUTION_STATUSES = {
  * @param {string} resolutionHash - keccak256 hash (bytes32 hex)
  * @returns {Promise<{ receipt: import('ethers').TransactionReceipt, resolutionId: number|null }>}
  */
-export async function submitResolution(signer, grievanceId, resolutionCid, resolutionHash) {
+export async function submitResolution(signer, grievanceId, arg3, arg4, arg5) {
+  let resolutionCid = arg3;
+  let resolutionHash = arg4;
+  if (arg5 !== undefined) {
+    // Tolerant if called with (signer, grievanceId, title, cid, hash)
+    resolutionCid = arg4;
+    resolutionHash = arg5;
+  }
+  const validHash = _ensureBytes32(resolutionHash, resolutionCid);
   const contract = getGrievanceSystemContract(signer);
-  const tx = await contract.submitResolution(grievanceId, resolutionCid, resolutionHash);
+  const tx = await contract.submitResolution(grievanceId, resolutionCid, validHash);
   const receipt = await tx.wait();
 
   let resolutionId = null;
@@ -888,8 +935,9 @@ export async function acceptResolution(signer, grievanceId) {
  * @returns {Promise<import('ethers').TransactionReceipt>}
  */
 export async function rejectResolution(signer, grievanceId, rejectionReasonHash) {
+  const validHash = _ensureBytes32(rejectionReasonHash, 'rejected');
   const contract = getGrievanceSystemContract(signer);
-  const tx = await contract.rejectResolution(grievanceId, rejectionReasonHash);
+  const tx = await contract.rejectResolution(grievanceId, validHash);
   return tx.wait();
 }
 

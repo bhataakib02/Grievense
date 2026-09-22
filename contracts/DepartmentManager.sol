@@ -105,6 +105,9 @@ contract DepartmentManager {
     /// @dev Category registry. Key = category ID.
     mapping(uint256 => GrievanceCategory) private _categories;
 
+    /// @dev Maps department ID to list of category IDs belonging to it.
+    mapping(uint256 => uint256[]) private _departmentCategories;
+
     // ========================================================================
     //  CUSTOM ERRORS (contract-specific)
     // ========================================================================
@@ -173,6 +176,7 @@ contract DepartmentManager {
     /// @notice Emitted when a new category is created.
     event CategoryCreated(
         uint256 indexed categoryId,
+        uint256 indexed departmentId,
         string name,
         address indexed createdBy,
         uint64 timestamp
@@ -644,13 +648,55 @@ contract DepartmentManager {
     }
 
     // ========================================================================
+    // ========================================================================
     //  CATEGORY MANAGEMENT
     // ========================================================================
 
     /**
-     * @notice Creates a new grievance category.
-     * @dev Only callable by Super Admin. Categories use dynamic uint256 IDs (not an enum)
-     *      so the Super Admin can add categories at runtime without contract redeployment.
+     * @notice Creates a new grievance category assigned to a specific department.
+     * @dev Only callable by Super Admin or the assigned Department Admin for that department.
+     *
+     * @param departmentId The department this category belongs to.
+     * @param name         The category name (cannot be empty).
+     * @param description  A brief description of what this category covers.
+     * @return categoryId  The unique ID of the newly created category.
+     */
+    function createCategory(
+        uint256 departmentId,
+        string calldata name,
+        string calldata description
+    ) external onlySuperAdminOrDeptAdminOf(departmentId) returns (uint256 categoryId) {
+        _requireDepartmentExists(departmentId);
+        _requireDepartmentActive(departmentId);
+        if (bytes(name).length == 0) revert EmptyString("name");
+
+        categoryId = _nextCategoryId++;
+        uint64 now_ = uint64(block.timestamp);
+
+        _categories[categoryId] = GrievanceCategory({
+            id: categoryId,
+            departmentId: departmentId,
+            name: name,
+            description: description,
+            isActive: true,
+            createdAt: now_
+        });
+
+        _departmentCategories[departmentId].push(categoryId);
+
+        emit CategoryCreated(categoryId, departmentId, name, msg.sender, now_);
+
+        _recordAudit(
+            AuditAction.CATEGORY_CREATED,
+            msg.sender,
+            categoryId,
+            keccak256(bytes(name))
+        );
+    }
+
+    /**
+     * @notice Creates a new global grievance category (departmentId = 0).
+     * @dev Only callable by Super Admin. Maintained for backward compatibility and global defaults.
      *
      * @param name        The category name (cannot be empty).
      * @param description A brief description of what this category covers.
@@ -667,13 +713,14 @@ contract DepartmentManager {
 
         _categories[categoryId] = GrievanceCategory({
             id: categoryId,
+            departmentId: 0,
             name: name,
             description: description,
             isActive: true,
             createdAt: now_
         });
 
-        emit CategoryCreated(categoryId, name, msg.sender, now_);
+        emit CategoryCreated(categoryId, 0, name, msg.sender, now_);
 
         _recordAudit(
             AuditAction.CATEGORY_CREATED,
@@ -685,7 +732,7 @@ contract DepartmentManager {
 
     /**
      * @notice Updates an existing category's name and description.
-     * @dev Only callable by Super Admin. Category must exist and be active.
+     * @dev Callable by Super Admin or the assigned Department Admin for this category's department.
      *
      * @param categoryId  The category to update.
      * @param name        The new category name (cannot be empty).
@@ -695,9 +742,10 @@ contract DepartmentManager {
         uint256 categoryId,
         string calldata name,
         string calldata description
-    ) external onlySuperAdmin {
+    ) external {
         _requireCategoryExists(categoryId);
         _requireCategoryActive(categoryId);
+        _requireSuperAdminOrDeptAdminOf(_categories[categoryId].departmentId);
         if (bytes(name).length == 0) revert EmptyString("name");
 
         GrievanceCategory storage cat = _categories[categoryId];
@@ -716,14 +764,15 @@ contract DepartmentManager {
 
     /**
      * @notice Deactivates a category.
-     * @dev Only callable by Super Admin. Sets `isActive = false`. The category record
-     *      is NOT deleted — existing grievances may reference this category ID.
+     * @dev Callable by Super Admin or the assigned Department Admin for this category's department.
+     *      Sets `isActive = false`. The category record is NOT deleted.
      *
      * @param categoryId The category to deactivate.
      */
-    function deactivateCategory(uint256 categoryId) external onlySuperAdmin {
+    function deactivateCategory(uint256 categoryId) external {
         _requireCategoryExists(categoryId);
         _requireCategoryActive(categoryId);
+        _requireSuperAdminOrDeptAdminOf(_categories[categoryId].departmentId);
 
         _categories[categoryId].isActive = false;
 
@@ -739,11 +788,12 @@ contract DepartmentManager {
 
     /**
      * @notice Reactivates a previously deactivated category.
-     * @dev Only callable by Super Admin.
+     * @dev Callable by Super Admin or the assigned Department Admin for this category's department.
      * @param categoryId The category to reactivate.
      */
-    function reactivateCategory(uint256 categoryId) public onlySuperAdmin {
+    function reactivateCategory(uint256 categoryId) public {
         _requireCategoryExists(categoryId);
+        _requireSuperAdminOrDeptAdminOf(_categories[categoryId].departmentId);
         if (_categories[categoryId].isActive) {
             revert CategoryAlreadyActive(categoryId);
         }
@@ -764,7 +814,7 @@ contract DepartmentManager {
      * @notice Alias for reactivateCategory.
      * @param categoryId The category to activate.
      */
-    function activateCategory(uint256 categoryId) external onlySuperAdmin {
+    function activateCategory(uint256 categoryId) external {
         reactivateCategory(categoryId);
     }
 
@@ -952,6 +1002,26 @@ contract DepartmentManager {
         return _categoryExists(categoryId) && _categories[categoryId].isActive;
     }
 
+    /**
+     * @notice Returns all category IDs associated with a department.
+     * @param departmentId The department ID to query.
+     * @return Array of category IDs.
+     */
+    function getDepartmentCategories(uint256 departmentId) external view returns (uint256[] memory) {
+        _requireDepartmentExists(departmentId);
+        return _departmentCategories[departmentId];
+    }
+
+    /**
+     * @notice Returns the department ID that a category belongs to.
+     * @param categoryId The category ID to query.
+     * @return The department ID (0 if global).
+     */
+    function getCategoryDepartment(uint256 categoryId) external view returns (uint256) {
+        _requireCategoryExists(categoryId);
+        return _categories[categoryId].departmentId;
+    }
+
     // ========================================================================
     //  INTERNAL HELPERS — Validation
     // ========================================================================
@@ -1014,6 +1084,18 @@ contract DepartmentManager {
         return
             roleManager.isDepartmentAdmin(account) &&
             _departments[departmentId].admin == account;
+    }
+
+    /**
+     * @dev Reverts with Unauthorized unless msg.sender is Super Admin or the assigned Department Admin.
+     * @param departmentId The department to check authorization against.
+     */
+    function _requireSuperAdminOrDeptAdminOf(uint256 departmentId) internal view {
+        if (!roleManager.isSuperAdmin(msg.sender)) {
+            if (departmentId == 0 || !_isDepartmentAdminFor(departmentId, msg.sender)) {
+                revert Unauthorized(msg.sender, "SUPER_ADMIN or assigned DEPARTMENT_ADMIN");
+            }
+        }
     }
 
     // ========================================================================

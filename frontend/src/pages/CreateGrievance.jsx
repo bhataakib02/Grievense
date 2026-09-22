@@ -9,7 +9,6 @@ import { Alert } from '../components/common/Alert';
 import { CONTRACT_ADDRESSES, isContractConfigured } from '../contracts/addresses';
 import {
   PRIORITIES,
-  PRIORITY_METADATA,
   fetchActiveDepartments,
   fetchActiveCategories,
   sendGrievanceTransaction,
@@ -114,6 +113,41 @@ export function CreateGrievance() {
     };
   }, [provider, signer]);
 
+  // Filter active categories strictly by selected department (or global categories if departmentId === 0)
+  const availableCategories = useMemo(() => {
+    if (!departmentId) return [];
+    const deptNum = Number(departmentId);
+    return categories.filter(
+      (c) => c.isActive && (c.departmentId === deptNum || c.departmentId === 0)
+    );
+  }, [categories, departmentId]);
+
+  // Synchronize categoryId if not in availableCategories
+  useEffect(() => {
+    if (availableCategories.length > 0) {
+      const exists = availableCategories.some((c) => String(c.id) === String(categoryId));
+      if (!exists) {
+        setCategoryId(String(availableCategories[0].id));
+      }
+    } else {
+      setCategoryId('');
+    }
+  }, [availableCategories, categoryId]);
+
+  // Handle department switch: select first available category or clear
+  const handleDepartmentChange = (newDeptId) => {
+    setDepartmentId(newDeptId);
+    const deptNum = Number(newDeptId);
+    const matching = categories.filter(
+      (c) => c.isActive && (c.departmentId === deptNum || c.departmentId === 0)
+    );
+    if (matching.length > 0) {
+      setCategoryId(String(matching[0].id));
+    } else {
+      setCategoryId('');
+    }
+  };
+
   // Handle optional evidence file selection
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -191,6 +225,7 @@ export function CreateGrievance() {
       return;
     }
 
+    let activeContract = null;
     try {
       // 2. State: VALIDATING
       setTxState('VALIDATING');
@@ -230,6 +265,7 @@ export function CreateGrievance() {
         descriptionCid: ipfsResult.cid,
         descriptionHash: ipfsResult.contentHash,
       });
+      activeContract = grievanceContract;
 
       // 5. State: MINING
       setPendingTxHash(tx.hash);
@@ -270,7 +306,7 @@ export function CreateGrievance() {
       console.error('Submission pipeline error:', err);
       setTxState('ERROR');
       setPendingTxHash(null);
-      setErrorMessage(parseContractError(err));
+      setErrorMessage(parseContractError(err, activeContract));
     }
   };
 
@@ -413,7 +449,7 @@ export function CreateGrievance() {
                 <select
                   id="department"
                   value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
                   disabled={txState !== 'IDLE' && txState !== 'ERROR'}
                   className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none"
                   required
@@ -438,7 +474,7 @@ export function CreateGrievance() {
               </label>
               {isLoadingEntities ? (
                 <div className="text-xs text-slate-400 py-2">Loading categories...</div>
-              ) : categories.length > 0 ? (
+              ) : availableCategories.length > 0 ? (
                 <select
                   id="category"
                   value={categoryId}
@@ -447,15 +483,15 @@ export function CreateGrievance() {
                   className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none"
                   required
                 >
-                  {categories.map((c) => (
+                  {availableCategories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} {c.departmentId === 0 ? '(Global)' : ''}
                     </option>
                   ))}
                 </select>
               ) : (
                 <div className="text-xs text-rose-600 font-semibold py-2">
-                  No active categories found.
+                  No categories available for this department.
                 </div>
               )}
             </div>
@@ -574,7 +610,7 @@ export function CreateGrievance() {
             type="submit"
             variant="primary"
             size="lg"
-            disabled={!isConnected || !isTitleValid || !description.trim() || (txState !== 'IDLE' && txState !== 'ERROR')}
+            disabled={!isConnected || !isTitleValid || !description.trim() || !departmentId || !categoryId || (txState !== 'IDLE' && txState !== 'ERROR')}
             className="w-full sm:w-auto font-bold shadow-md"
           >
             {txState === 'IDLE' || txState === 'ERROR'

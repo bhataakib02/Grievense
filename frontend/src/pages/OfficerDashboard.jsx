@@ -78,6 +78,14 @@ export function OfficerDashboard() {
     }
   }, [isConnected, address, isSupportedNetwork, signer, provider]);
 
+  // Immediate account-switching state clearance: zero stale data retention
+  useEffect(() => {
+    setCases([]);
+    setDepartments([]);
+    setCategories([]);
+    setError(null);
+  }, [address, chainId]);
+
   useEffect(() => {
     let active = true;
     const fetchCases = async () => {
@@ -107,53 +115,73 @@ export function OfficerDashboard() {
     return map;
   }, [categories]);
 
-  // Derived KPI metrics
+  // Derived 7 KPI metrics per Section 1 specification
   const stats = useMemo(() => {
     const total = cases.length;
-    const underReview = cases.filter((c) => c.status === STATUSES.UNDER_REVIEW).length;
-    const underInvestigation = cases.filter((c) => c.status === STATUSES.UNDER_INVESTIGATION).length;
-    const resolutionProposed = cases.filter((c) => c.status === STATUSES.RESOLUTION_PROPOSED).length;
-    const resolved = cases.filter(
-      (c) => c.status === STATUSES.ACCEPTED || c.status === STATUSES.CLOSED || c.status === STATUSES.RESOLVED
+    const newReview = cases.filter(
+      (c) => c.status === STATUSES.ASSIGNED || c.status === STATUSES.UNDER_REVIEW
     ).length;
+    const investigating = cases.filter(
+      (c) =>
+        c.status === STATUSES.UNDER_INVESTIGATION ||
+        c.status === STATUSES.REOPENED ||
+        c.status === STATUSES.ESCALATED
+    ).length;
+    const resolutionProposed = cases.filter(
+      (c) =>
+        c.status === STATUSES.RESOLUTION_PROPOSED ||
+        c.status === STATUSES.CITIZEN_REVIEW
+    ).length;
+    const resolved = cases.filter(
+      (c) => c.status === STATUSES.ACCEPTED || c.status === STATUSES.RESOLVED
+    ).length;
+    const closed = cases.filter((c) => c.status === STATUSES.CLOSED).length;
     const overdue = cases.filter(
       (c) =>
         c.slaDeadline > 0 &&
         currentTime > c.slaDeadline &&
         c.status !== STATUSES.CLOSED &&
         c.status !== STATUSES.ACCEPTED &&
-        c.status !== STATUSES.RESOLVED
+        c.status !== STATUSES.RESOLVED &&
+        c.status !== STATUSES.REJECTED
     ).length;
 
     return {
       total,
-      underReview,
-      underInvestigation,
+      newReview,
+      investigating,
       resolutionProposed,
       resolved,
+      closed,
       overdue,
     };
   }, [cases, currentTime]);
 
-  // Filter cases
+  // Filter cases across lifecycle statuses per Section 2
   const filteredCases = useMemo(() => {
     return cases.filter((c) => {
-      if (activeFilter === 'assigned') {
+      if (activeFilter === 'new_review') {
         if (c.status !== STATUSES.ASSIGNED && c.status !== STATUSES.UNDER_REVIEW) return false;
       } else if (activeFilter === 'investigating') {
-        if (c.status !== STATUSES.UNDER_INVESTIGATION) return false;
+        if (
+          c.status !== STATUSES.UNDER_INVESTIGATION &&
+          c.status !== STATUSES.REOPENED &&
+          c.status !== STATUSES.ESCALATED
+        ) return false;
       } else if (activeFilter === 'resolution') {
         if (c.status !== STATUSES.RESOLUTION_PROPOSED && c.status !== STATUSES.CITIZEN_REVIEW) return false;
       } else if (activeFilter === 'resolved') {
-        if (c.status !== STATUSES.ACCEPTED && c.status !== STATUSES.CLOSED && c.status !== STATUSES.RESOLVED)
-          return false;
+        if (c.status !== STATUSES.ACCEPTED && c.status !== STATUSES.RESOLVED) return false;
+      } else if (activeFilter === 'closed') {
+        if (c.status !== STATUSES.CLOSED) return false;
       } else if (activeFilter === 'overdue') {
         const isOverdue =
           c.slaDeadline > 0 &&
           currentTime > c.slaDeadline &&
           c.status !== STATUSES.CLOSED &&
           c.status !== STATUSES.ACCEPTED &&
-          c.status !== STATUSES.RESOLVED;
+          c.status !== STATUSES.RESOLVED &&
+          c.status !== STATUSES.REJECTED;
         if (!isOverdue) return false;
       }
 
@@ -233,74 +261,102 @@ export function OfficerDashboard() {
           </div>
         </div>
 
-        {/* 5-Column Metric KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 pt-6 text-xs">
+        {/* 7-Column Metric KPIs (Section 1) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-6 text-xs">
           <div
             onClick={() => setActiveFilter('all')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
               activeFilter === 'all'
                 ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
             <span className="text-slate-500 block font-medium">Total Assigned</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1 block">
+            <span className="text-xl font-extrabold text-slate-900 mt-1 block">
               {stats.total}
             </span>
           </div>
 
           <div
+            onClick={() => setActiveFilter('new_review')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'new_review'
+                ? 'bg-amber-50/70 border-amber-200 ring-2 ring-amber-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">New / Review</span>
+            <span className="text-xl font-extrabold text-amber-600 mt-1 block">
+              {stats.newReview}
+            </span>
+          </div>
+
+          <div
             onClick={() => setActiveFilter('investigating')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
               activeFilter === 'investigating'
                 ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
             <span className="text-slate-500 block font-medium">Investigating</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 mt-1 block">
-              {stats.underInvestigation}
+            <span className="text-xl font-extrabold text-blue-600 mt-1 block">
+              {stats.investigating}
             </span>
           </div>
 
           <div
             onClick={() => setActiveFilter('resolution')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
               activeFilter === 'resolution'
-                ? 'bg-amber-50/80 border-amber-200 ring-2 ring-amber-100'
+                ? 'bg-purple-50/80 border-purple-200 ring-2 ring-purple-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
-            <span className="text-slate-500 block font-medium">Resolutions</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-1 block">
+            <span className="text-slate-500 block font-medium">Resolution</span>
+            <span className="text-xl font-extrabold text-purple-600 mt-1 block">
               {stats.resolutionProposed}
             </span>
           </div>
 
           <div
             onClick={() => setActiveFilter('resolved')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
               activeFilter === 'resolved'
                 ? 'bg-emerald-50/70 border-emerald-200 ring-2 ring-emerald-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
             <span className="text-slate-500 block font-medium">Resolved</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1 block">
+            <span className="text-xl font-extrabold text-emerald-600 mt-1 block">
               {stats.resolved}
             </span>
           </div>
 
           <div
+            onClick={() => setActiveFilter('closed')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'closed'
+                ? 'bg-slate-200 border-slate-300 ring-2 ring-slate-200'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Closed</span>
+            <span className="text-xl font-extrabold text-slate-700 mt-1 block">
+              {stats.closed}
+            </span>
+          </div>
+
+          <div
             onClick={() => setActiveFilter('overdue')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
               activeFilter === 'overdue'
                 ? 'bg-rose-50/80 border-rose-200 ring-2 ring-rose-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
             <span className="text-slate-500 block font-medium">Overdue SLA</span>
-            <span className={`text-xl sm:text-2xl font-extrabold mt-1 block ${stats.overdue > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+            <span className={`text-xl font-extrabold mt-1 block ${stats.overdue > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
               {stats.overdue}
             </span>
           </div>
@@ -323,11 +379,12 @@ export function OfficerDashboard() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {[
-                { id: 'all', label: `All (${cases.length})` },
-                { id: 'assigned', label: `New / Review (${stats.underReview})` },
-                { id: 'investigating', label: `Investigating (${stats.underInvestigation})` },
-                { id: 'resolution', label: `Resolutions (${stats.resolutionProposed})` },
+                { id: 'all', label: `All (${stats.total})` },
+                { id: 'new_review', label: `New / Review (${stats.newReview})` },
+                { id: 'investigating', label: `Investigating (${stats.investigating})` },
+                { id: 'resolution', label: `Resolution (${stats.resolutionProposed})` },
                 { id: 'resolved', label: `Resolved (${stats.resolved})` },
+                { id: 'closed', label: `Closed (${stats.closed})` },
                 { id: 'overdue', label: `Overdue (${stats.overdue})` },
               ].map((f) => (
                 <button
@@ -370,6 +427,7 @@ export function OfficerDashboard() {
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Priority</th>
                     <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">SLA Deadline</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -378,11 +436,20 @@ export function OfficerDashboard() {
                   {filteredCases.map((c) => {
                     const sMeta = STATUS_METADATA[c.status] || { label: 'Unknown', badgeVariant: 'default' };
                     const pMeta = PRIORITY_METADATA[c.priority] || { label: 'Medium', badgeVariant: 'default' };
+                    const isConcluded = [STATUSES.CLOSED, STATUSES.ACCEPTED, STATUSES.RESOLVED].includes(c.status);
                     const isBreached =
                       c.slaDeadline > 0 &&
                       currentTime > c.slaDeadline &&
-                      c.status !== STATUSES.CLOSED &&
-                      c.status !== STATUSES.ACCEPTED;
+                      !isConcluded &&
+                      c.status !== STATUSES.REJECTED;
+
+                    let remainingStr = '';
+                    if (c.slaDeadline > 0 && !isBreached && !isConcluded) {
+                      const diff = c.slaDeadline - currentTime;
+                      const hours = Math.floor(diff / 3600);
+                      const days = Math.floor(hours / 24);
+                      remainingStr = days > 0 ? `${days}d left` : `${hours}h left`;
+                    }
 
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
@@ -405,10 +472,24 @@ export function OfficerDashboard() {
                         <td className="py-3.5 px-4 font-medium text-slate-700">
                           {departmentMap[c.departmentId] || `Dept #${c.departmentId}`}
                         </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {categoryMap[c.categoryId] || (c.categoryId ? `Cat #${c.categoryId}` : 'General')}
+                        </td>
                         <td className="py-3.5 px-4 font-mono text-[11px]">
-                          <span className={isBreached ? 'text-rose-600 font-bold' : 'text-slate-600'}>
-                            {formatTimestamp(c.slaDeadline)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className={isBreached ? 'text-rose-600 font-bold' : 'text-slate-600'}>
+                              {formatTimestamp(c.slaDeadline)}
+                            </span>
+                            {isBreached && (
+                              <span className="text-[10px] text-rose-600 font-bold">⚠️ Overdue</span>
+                            )}
+                            {remainingStr && (
+                              <span className="text-[10px] text-slate-400">{remainingStr}</span>
+                            )}
+                            {c.status === STATUSES.ESCALATED && (
+                              <span className="text-[10px] text-amber-600 font-bold">⚡ Escalated</span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <Button

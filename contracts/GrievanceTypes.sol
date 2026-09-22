@@ -200,6 +200,7 @@ struct Grievance {
  */
 struct GrievanceCategory {
     uint256 id;             // Unique category identifier
+    uint256 departmentId;   // Department this category belongs to (0 if global/system-wide)
     string name;            // Human-readable category name (e.g., "Infrastructure")
     string description;     // Brief description of what this category covers
     bool isActive;          // Whether this category is currently available for new grievances
@@ -407,3 +408,6 @@ error CategoryAlreadyActive(uint256 categoryId);
 
 /// @notice Department admin is not assigned for this department.
 error DepartmentAdminNotAssigned(uint256 departmentId);
+
+/// @notice The specified category does not belong to the responsible department.
+error CategoryNotInDepartment(uint256 categoryId, uint256 departmentId);

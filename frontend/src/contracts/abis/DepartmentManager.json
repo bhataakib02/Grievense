@@ -202,6 +202,12 @@
         "type": "uint256"
       },
       {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      },
+      {
         "indexed": false,
         "internalType": "string",
         "name": "name",
@@ -662,6 +668,35 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "description",
+        "type": "string"
+      }
+    ],
+    "name": "createCategory",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "string",
         "name": "name",
         "type": "string"
@@ -789,6 +824,11 @@
             "type": "uint256"
           },
           {
+            "internalType": "uint256",
+            "name": "departmentId",
+            "type": "uint256"
+          },
+          {
             "internalType": "string",
             "name": "name",
             "type": "string"
@@ -820,6 +860,25 @@
   {
     "inputs": [],
     "name": "getCategoryCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getCategoryDepartment",
     "outputs": [
       {
         "internalType": "uint256",
@@ -895,6 +954,25 @@
         "internalType": "address",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getDepartmentCategories",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
       }
     ],
     "stateMutability": "view",

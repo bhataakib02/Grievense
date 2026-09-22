@@ -57,6 +57,22 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "categoryId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "departmentId",
+        "type": "uint256"
+      }
+    ],
+    "name": "CategoryNotInDepartment",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "departmentId",
         "type": "uint256"
       }

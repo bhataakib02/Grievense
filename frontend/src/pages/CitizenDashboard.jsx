@@ -9,6 +9,8 @@ import { Alert } from '../components/common/Alert';
 import { shortenAddress, formatTimestamp } from '../utils/formatters';
 import {
   fetchCitizenGrievances,
+  fetchActiveDepartments,
+  fetchActiveCategories,
   STATUSES,
   STATUS_METADATA,
   PRIORITY_METADATA,
@@ -24,11 +26,22 @@ export function CitizenDashboard() {
 
   // My Grievances state
   const [myGrievances, setMyGrievances] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loadingGrievances, setLoadingGrievances] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'pending_action' | 'resolved'
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentTime] = useState(() => Math.floor(Date.now() / 1000));
 
-  const loadMyGrievances = useCallback(async () => {
+  // Immediate account-switching state clearance: zero stale data retention
+  useEffect(() => {
+    setMyGrievances([]);
+    setDepartments([]);
+    setCategories([]);
+    setNotice(null);
+  }, [address, chainId]);
+
+  const loadData = useCallback(async () => {
     const runner = provider || signer;
     if (!runner || !address) {
       setMyGrievances([]);
@@ -37,8 +50,14 @@ export function CitizenDashboard() {
 
     setLoadingGrievances(true);
     try {
-      const list = await fetchCitizenGrievances(runner, address);
+      const [list, depts, cats] = await Promise.all([
+        fetchCitizenGrievances(runner, address),
+        fetchActiveDepartments(runner).catch(() => []),
+        fetchActiveCategories(runner).catch(() => []),
+      ]);
       setMyGrievances(list);
+      setDepartments(depts);
+      setCategories(cats);
     } catch (err) {
       console.warn('Could not load citizen grievances:', err);
     } finally {
@@ -50,14 +69,30 @@ export function CitizenDashboard() {
     let active = true;
     const load = async () => {
       if (active) {
-        await loadMyGrievances();
+        await loadData();
       }
     };
     load();
     return () => {
       active = false;
     };
-  }, [loadMyGrievances]);
+  }, [loadData]);
+
+  const departmentMap = useMemo(() => {
+    const map = {};
+    departments.forEach((d) => {
+      map[d.id] = d.name;
+    });
+    return map;
+  }, [departments]);
+
+  const categoryMap = useMemo(() => {
+    const map = {};
+    categories.forEach((c) => {
+      map[c.id] = c.name;
+    });
+    return map;
+  }, [categories]);
 
   const handleSelfRegister = async () => {
     setSubmittingRegistration(true);
@@ -69,7 +104,7 @@ export function CitizenDashboard() {
         title: 'Registration Successful',
         message: 'Your wallet has been self-registered as a Citizen on RoleManager.sol.',
       });
-      loadMyGrievances();
+      loadData();
     } catch (err) {
       setNotice({
         type: 'danger',
@@ -81,46 +116,60 @@ export function CitizenDashboard() {
     }
   };
 
-  // Metrics computation
-  const activeCases = useMemo(
-    () =>
-      myGrievances.filter(
-        (g) =>
-          g.status === STATUSES.SUBMITTED ||
-          g.status === STATUSES.REGISTERED ||
-          g.status === STATUSES.UNDER_REVIEW ||
-          g.status === STATUSES.UNDER_INVESTIGATION ||
-          g.status === STATUSES.ESCALATED ||
-          g.status === STATUSES.REOPENED
-      ),
-    [myGrievances]
-  );
+  // 9 KPI metrics per Section 9 specification
+  const stats = useMemo(() => {
+    const total = myGrievances.length;
+    const pending = myGrievances.filter(
+      (g) => g.status === STATUSES.SUBMITTED || g.status === STATUSES.REGISTERED
+    ).length;
+    const underReview = myGrievances.filter(
+      (g) => g.status === STATUSES.ASSIGNED || g.status === STATUSES.UNDER_REVIEW
+    ).length;
+    const investigating = myGrievances.filter(
+      (g) => g.status === STATUSES.UNDER_INVESTIGATION || g.status === STATUSES.ESCALATED
+    ).length;
+    const resolutionProposed = myGrievances.filter(
+      (g) => g.status === STATUSES.RESOLUTION_PROPOSED || g.status === STATUSES.CITIZEN_REVIEW
+    ).length;
+    const resolved = myGrievances.filter(
+      (g) => g.status === STATUSES.ACCEPTED || g.status === STATUSES.RESOLVED
+    ).length;
+    const rejected = myGrievances.filter((g) => g.status === STATUSES.REJECTED).length;
+    const reopened = myGrievances.filter((g) => g.status === STATUSES.REOPENED).length;
+    const closed = myGrievances.filter((g) => g.status === STATUSES.CLOSED).length;
 
-  const pendingActionCases = useMemo(
-    () => myGrievances.filter((g) => g.status === STATUSES.RESOLUTION_PROPOSED),
-    [myGrievances]
-  );
-
-  const resolvedCases = useMemo(
-    () =>
-      myGrievances.filter(
-        (g) =>
-          g.status === STATUSES.RESOLVED ||
-          g.status === STATUSES.CLOSED ||
-          g.status === STATUSES.RESOLUTION_ACCEPTED
-      ),
-    [myGrievances]
-  );
+    return {
+      total,
+      pending,
+      underReview,
+      investigating,
+      resolutionProposed,
+      resolved,
+      rejected,
+      reopened,
+      closed,
+    };
+  }, [myGrievances]);
 
   // Filtered grievances
   const filteredGrievances = useMemo(() => {
     return myGrievances.filter((g) => {
-      if (statusFilter === 'active') {
-        if (!activeCases.some((ac) => ac.id === g.id)) return false;
-      } else if (statusFilter === 'pending_action') {
-        if (!pendingActionCases.some((pc) => pc.id === g.id)) return false;
+      if (statusFilter === 'pending') {
+        if (g.status !== STATUSES.SUBMITTED && g.status !== STATUSES.REGISTERED) return false;
+      } else if (statusFilter === 'under_review') {
+        if (g.status !== STATUSES.ASSIGNED && g.status !== STATUSES.UNDER_REVIEW) return false;
+      } else if (statusFilter === 'investigating') {
+        if (g.status !== STATUSES.UNDER_INVESTIGATION && g.status !== STATUSES.ESCALATED) return false;
+      } else if (statusFilter === 'resolution_proposed') {
+        if (g.status !== STATUSES.RESOLUTION_PROPOSED && g.status !== STATUSES.CITIZEN_REVIEW) return false;
       } else if (statusFilter === 'resolved') {
-        if (!resolvedCases.some((rc) => rc.id === g.id)) return false;
+        if (g.status !== STATUSES.ACCEPTED && g.status !== STATUSES.RESOLVED) return false;
+      } else if (statusFilter === 'rejected') {
+        if (g.status !== STATUSES.REJECTED) return false;
+      } else if (statusFilter === 'reopened') {
+        if (g.status !== STATUSES.REOPENED) return false;
+      } else if (statusFilter === 'closed') {
+        if (g.status !== STATUSES.CLOSED) return false;
       }
 
       if (searchQuery.trim()) {
@@ -132,7 +181,7 @@ export function CitizenDashboard() {
 
       return true;
     });
-  }, [myGrievances, statusFilter, searchQuery, activeCases, pendingActionCases, resolvedCases]);
+  }, [myGrievances, statusFilter, searchQuery]);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
@@ -223,80 +272,155 @@ export function CitizenDashboard() {
           </div>
         </div>
 
-        {/* 4 Metric Cards (Section 11) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 text-xs">
+        {/* 9 Metric Cards (Section 9) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2 pt-6 text-xs">
           <div
             onClick={() => setStatusFilter('all')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
               statusFilter === 'all'
                 ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
-            <span className="text-slate-500 block font-medium">Total Filed</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1 block">
-              {myGrievances.length}
+            <span className="text-slate-500 block font-medium truncate">Total</span>
+            <span className="text-lg font-extrabold text-slate-900 mt-1 block">
+              {stats.total}
             </span>
           </div>
 
           <div
-            onClick={() => setStatusFilter('active')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-              statusFilter === 'active'
+            onClick={() => setStatusFilter('pending')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'pending'
+                ? 'bg-amber-50/70 border-amber-200 ring-2 ring-amber-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium truncate">Pending</span>
+            <span className="text-lg font-extrabold text-amber-600 mt-1 block">
+              {stats.pending}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setStatusFilter('under_review')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'under_review'
+                ? 'bg-amber-50/70 border-amber-200 ring-2 ring-amber-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium truncate">Review</span>
+            <span className="text-lg font-extrabold text-amber-700 mt-1 block">
+              {stats.underReview}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setStatusFilter('investigating')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'investigating'
                 ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
-            <span className="text-slate-500 block font-medium">Active Cases</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 mt-1 block">
-              {activeCases.length}
+            <span className="text-slate-500 block font-medium truncate">Investigating</span>
+            <span className="text-lg font-extrabold text-blue-600 mt-1 block">
+              {stats.investigating}
             </span>
           </div>
 
           <div
-            onClick={() => setStatusFilter('pending_action')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-              statusFilter === 'pending_action'
-                ? 'bg-amber-50/80 border-amber-200 ring-2 ring-amber-100'
+            onClick={() => setStatusFilter('resolution_proposed')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'resolution_proposed'
+                ? 'bg-purple-50/80 border-purple-200 ring-2 ring-purple-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
-            <span className="text-slate-500 block font-medium">Action Required</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-1 block">
-              {pendingActionCases.length}
+            <span className="text-slate-500 block font-medium truncate">Resolution</span>
+            <span className="text-lg font-extrabold text-purple-600 mt-1 block">
+              {stats.resolutionProposed}
             </span>
           </div>
 
           <div
             onClick={() => setStatusFilter('resolved')}
-            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
               statusFilter === 'resolved'
                 ? 'bg-emerald-50/70 border-emerald-200 ring-2 ring-emerald-100'
                 : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
             }`}
           >
-            <span className="text-slate-500 block font-medium">Resolved Cases</span>
-            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1 block">
-              {resolvedCases.length}
+            <span className="text-slate-500 block font-medium truncate">Resolved</span>
+            <span className="text-lg font-extrabold text-emerald-600 mt-1 block">
+              {stats.resolved}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setStatusFilter('rejected')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'rejected'
+                ? 'bg-rose-50/80 border-rose-200 ring-2 ring-rose-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium truncate">Rejected</span>
+            <span className="text-lg font-extrabold text-rose-600 mt-1 block">
+              {stats.rejected}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setStatusFilter('reopened')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'reopened'
+                ? 'bg-orange-50/80 border-orange-200 ring-2 ring-orange-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium truncate">Reopened</span>
+            <span className="text-lg font-extrabold text-orange-600 mt-1 block">
+              {stats.reopened}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setStatusFilter('closed')}
+            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+              statusFilter === 'closed'
+                ? 'bg-slate-200 border-slate-300 ring-2 ring-slate-200'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium truncate">Closed</span>
+            <span className="text-lg font-extrabold text-slate-700 mt-1 block">
+              {stats.closed}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Cases Table Section */}
+      {/* Cases Table Section (Section 10) */}
       <Card
         title="My Grievance Tracking Records"
-        subtitle="Grievances registered by this wallet address directly on GrievanceSystem.sol"
+        subtitle="Historical and active grievances submitted by this connected wallet"
       >
         <div className="space-y-4">
           {/* Filter Bar & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {[
-                { id: 'all', label: `All (${myGrievances.length})` },
-                { id: 'active', label: `Active (${activeCases.length})` },
-                { id: 'pending_action', label: `Action Needed (${pendingActionCases.length})` },
-                { id: 'resolved', label: `Resolved (${resolvedCases.length})` },
+                { id: 'all', label: `All (${stats.total})` },
+                { id: 'pending', label: `Pending (${stats.pending})` },
+                { id: 'under_review', label: `Review (${stats.underReview})` },
+                { id: 'investigating', label: `Investigating (${stats.investigating})` },
+                { id: 'resolution_proposed', label: `Resolution (${stats.resolutionProposed})` },
+                { id: 'resolved', label: `Resolved (${stats.resolved})` },
+                { id: 'rejected', label: `Rejected (${stats.rejected})` },
+                { id: 'reopened', label: `Reopened (${stats.reopened})` },
+                { id: 'closed', label: `Closed (${stats.closed})` },
               ].map((f) => (
                 <button
                   key={f.id}
@@ -335,17 +459,28 @@ export function CitizenDashboard() {
                   <tr>
                     <th className="py-3 px-4">ID</th>
                     <th className="py-3 px-4">Title</th>
+                    <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Priority</th>
-                    <th className="py-3 px-4">Department</th>
-                    <th className="py-3 px-4">Date Filed</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-3 px-4">Created</th>
+                    <th className="py-3 px-4">SLA</th>
+                    <th className="py-3 px-4">Last Update</th>
+                    <th className="py-3 px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredGrievances.map((g) => {
                     const sMeta = STATUS_METADATA[g.status] || { label: 'Unknown', badgeVariant: 'default' };
                     const pMeta = PRIORITY_METADATA[g.priority] || { label: 'Medium', badgeVariant: 'default' };
+                    const isConcluded = [STATUSES.CLOSED, STATUSES.ACCEPTED, STATUSES.RESOLVED].includes(g.status);
+                    const isBreached =
+                      g.slaDeadline > 0 &&
+                      currentTime > g.slaDeadline &&
+                      !isConcluded &&
+                      g.status !== STATUSES.REJECTED;
+                    const isAwaitingAction =
+                      g.status === STATUSES.RESOLUTION_PROPOSED || g.status === STATUSES.CITIZEN_REVIEW;
 
                     return (
                       <tr key={g.id} className="hover:bg-slate-50/70 transition-colors">
@@ -354,6 +489,12 @@ export function CitizenDashboard() {
                         </td>
                         <td className="py-3.5 px-4 font-semibold text-slate-900 max-w-xs truncate">
                           {g.title}
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-slate-700">
+                          {departmentMap[g.departmentId] || `Dept #${g.departmentId}`}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {categoryMap[g.categoryId] || (g.categoryId ? `Cat #${g.categoryId}` : 'General')}
                         </td>
                         <td className="py-3.5 px-4">
                           <Badge variant={sMeta.badgeVariant} dot className="text-[10px]">
@@ -365,20 +506,28 @@ export function CitizenDashboard() {
                             {pMeta.label}
                           </Badge>
                         </td>
-                        <td className="py-3.5 px-4 font-medium text-slate-700">
-                          Dept #{g.departmentId}
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-slate-500">
+                          {formatTimestamp(g.createdAt)}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-[11px]">
+                          <span className={isBreached ? 'text-rose-600 font-bold' : 'text-slate-600'}>
+                            {formatTimestamp(g.slaDeadline)}
+                          </span>
+                          {isBreached && (
+                            <span className="text-[10px] text-rose-600 font-bold block">⚠️ Breached</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">
-                          {formatTimestamp(g.createdAt)}
+                          {formatTimestamp(g.updatedAt)}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <Button
                             size="xs"
-                            variant="primary"
+                            variant={isAwaitingAction ? 'warning' : 'primary'}
                             onClick={() => navigate(`/citizen/grievance/${g.id}`)}
                             className="font-bold"
                           >
-                            View Case →
+                            {isAwaitingAction ? 'Review Resolution →' : 'View Case →'}
                           </Button>
                         </td>
                       </tr>
