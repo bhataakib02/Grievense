@@ -417,33 +417,16 @@ export async function removeOfficerFromDepartment(signer, departmentId, officerA
 }
 
 /**
- * Super Admin or Department Admin: Creates a new grievance category.
- * Supports:
- * - createCategory(signer, departmentId, name, description)
- * - createCategory(signer, name, description)
+ * Super Admin or Department Admin: Creates a new grievance category scoped to a department.
+ * Signature: createCategory(signer, departmentId, name, description)
+ * Calls: createCategory(uint256,string,string) on DepartmentManager
  */
-export async function createCategory(signer, arg1, arg2, arg3) {
+export async function createCategory(signer, departmentId, name, description) {
   let contract;
   try {
     contract = getDepartmentManagerContract(signer);
-    let tx;
-    if (arg3 !== undefined) {
-      // (signer, departmentId, name, description)
-      const method = contract['createCategory(uint256,string,string)'];
-      if (typeof method === 'function') {
-        tx = await method(arg1, arg2.trim(), arg3.trim());
-      } else {
-        tx = await contract.createCategory(arg1, arg2.trim(), arg3.trim());
-      }
-    } else {
-      // (signer, name, description)
-      const method = contract['createCategory(string,string)'];
-      if (typeof method === 'function') {
-        tx = await method(arg1.trim(), arg2.trim());
-      } else {
-        tx = await contract.createCategory(arg1.trim(), arg2.trim());
-      }
-    }
+    const method = contract['createCategory(uint256,string,string)'] || contract.createCategory;
+    const tx = await method(Number(departmentId), name.trim(), (description || '').trim());
     return await tx.wait();
   } catch (err) {
     throw new Error(parseDepartmentError(err, contract));

@@ -1,3 +1,4 @@
+
 # Remix IDE Deployment & Configuration Guide
 
 **Blockchain-Based Public Grievance Tracking System**
@@ -147,15 +148,17 @@ In `DepartmentManager`:
 ### B. Create Grievance Categories
 In `DepartmentManager`:
 - Call `createCategory`:
+  - `departmentId`: `1`
   - `name`: `"Road & Pothole Repair"`
   - `description`: `"Road defects, potholes, surface degradation"`
   - Click **transact** → Confirm.
-  *(Creates Category ID `1`)*
+  *(Creates Category ID `1` scoped to Department `1`)*
 - Call `createCategory`:
+  - `departmentId`: `1`
   - `name`: `"Waste Management & Sanitation"`
   - `description`: `"Garbage collection, sewage, environmental cleanup"`
   - Click **transact** → Confirm.
-  *(Creates Category ID `2`)*
+  *(Creates Category ID `2` scoped to Department `1`)*
 
 ### C. Grant Roles
 In `RoleManager`:
