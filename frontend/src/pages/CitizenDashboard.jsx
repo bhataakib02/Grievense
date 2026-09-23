@@ -8,13 +8,15 @@ import { Button } from '../components/common/Button';
 import { Alert } from '../components/common/Alert';
 import { shortenAddress, formatTimestamp } from '../utils/formatters';
 import {
-  fetchCitizenGrievances,
-  fetchActiveDepartments,
-  fetchActiveCategories,
   STATUSES,
   STATUS_METADATA,
   PRIORITY_METADATA,
 } from '../services/grievanceService';
+import {
+  getCachedCitizenGrievances,
+  getCachedActiveDepartments,
+  getCachedActiveCategories,
+} from '../services/cachedDataService';
 
 export function CitizenDashboard() {
   const { address, networkName, chainId, provider, signer } = useWallet();
@@ -56,9 +58,9 @@ export function CitizenDashboard() {
     setLoadError(null);
     try {
       const [list, depts, cats] = await Promise.all([
-        fetchCitizenGrievances(runner, address),
-        fetchActiveDepartments(runner).catch(() => []),
-        fetchActiveCategories(runner).catch(() => []),
+        getCachedCitizenGrievances(runner, address),
+        getCachedActiveDepartments(runner).catch(() => []),
+        getCachedActiveCategories(runner).catch(() => []),
       ]);
       setMyGrievances(list);
       setDepartments(depts);

@@ -230,21 +230,22 @@ export function GrievanceDetails({ grievanceId }) {
         return 0; // Submitted
       case STATUSES.REGISTERED:
         return 1; // Registered
+      case STATUSES.REOPENED:
+        return 1; // Reopened - returned to Department Triage
+      case STATUSES.ASSIGNED:
       case STATUSES.UNDER_REVIEW:
-        return 2; // Reviewed
+        return 2; // Assigned / Reviewed
       case STATUSES.UNDER_INVESTIGATION:
       case STATUSES.ESCALATED:
         return 3; // Investigating
       case STATUSES.RESOLUTION_PROPOSED:
         return 4; // Resolution Proposed
-      case STATUSES.RESOLUTION_REJECTED:
-      case STATUSES.RESOLUTION_ACCEPTED:
+      case STATUSES.CITIZEN_REVIEW:
+      case STATUSES.REJECTED:
         return 5; // Citizen Decision
-      case STATUSES.RESOLVED:
+      case STATUSES.ACCEPTED:
       case STATUSES.CLOSED:
         return 6; // Closed
-      case STATUSES.REJECTED:
-        return -1; // Special rejected state
       default:
         return 0;
     }
@@ -345,7 +346,7 @@ export function GrievanceDetails({ grievanceId }) {
   const lifecycleSteps = [
     { title: 'Submitted', desc: 'Lodge ticket' },
     { title: 'Registered', desc: 'Dept triage' },
-    { title: 'Reviewed', desc: 'Officer review' },
+    { title: 'Assigned / Review', desc: 'Officer review' },
     { title: 'Investigating', desc: 'Active probe' },
     { title: 'Resolution Proposed', desc: 'Remedy logged' },
     { title: 'Citizen Decision', desc: 'Citizen review' },
@@ -439,13 +440,34 @@ export function GrievanceDetails({ grievanceId }) {
       {/* 2. VISUAL LIFECYCLE TIMELINE */}
       <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-sm sm:text-base font-bold text-slate-900">
-            Grievance Lifecycle Progression
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900">
+              Grievance Lifecycle Progression
+            </h2>
+            {grievance.status === STATUSES.REOPENED && (
+              <Badge variant="warning" dot className="text-[10px]">
+                Reopened — Pending Triage
+              </Badge>
+            )}
+          </div>
           <span className="text-xs text-slate-400 font-mono">
             SLA Target: {formatTimestamp(grievance.slaDeadline)}
           </span>
         </div>
+
+        {grievance.status === STATUSES.REOPENED && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+            <span className="text-xl">🔄</span>
+            <div className="space-y-1">
+              <h4 className="text-xs font-bold text-amber-900">
+                Grievance Reopened (Pending Departmental Triage & Assignment)
+              </h4>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                The citizen rejected the proposed resolution and reopened this grievance. The case has returned to Department Triage for administrator reassignment before investigation can resume.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Stepper Bar */}
         <div className="overflow-x-auto pb-2 no-scrollbar">
@@ -453,6 +475,10 @@ export function GrievanceDetails({ grievanceId }) {
             {lifecycleSteps.map((step, idx) => {
               const isPast = idx < currentStageIndex;
               const isCurrent = idx === currentStageIndex;
+              const isReopenedStage = isCurrent && grievance.status === STATUSES.REOPENED && idx === 1;
+
+              const stepTitle = isReopenedStage ? 'Reopened / Triage' : step.title;
+              const stepDesc = isReopenedStage ? 'Awaiting assignment' : step.desc;
 
               return (
                 <div key={step.title} className="flex-1 flex flex-col items-center relative group">
@@ -468,31 +494,35 @@ export function GrievanceDetails({ grievanceId }) {
                   {/* Step Bubble */}
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs z-10 transition-transform ${
-                      isCurrent
+                      isReopenedStage
+                        ? 'bg-amber-500 text-white ring-4 ring-amber-100 shadow-md scale-110'
+                        : isCurrent
                         ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md scale-110'
                         : isPast
                         ? 'bg-blue-600 text-white'
                         : 'bg-slate-100 text-slate-400 border border-slate-200'
                     }`}
                   >
-                    {isPast ? '✓' : idx + 1}
+                    {isReopenedStage ? '🔄' : isPast ? '✓' : idx + 1}
                   </div>
 
                   {/* Step Label */}
                   <div className="text-center mt-2.5">
                     <span
                       className={`text-xs block font-bold whitespace-nowrap ${
-                        isCurrent
+                        isReopenedStage
+                          ? 'text-amber-700 font-extrabold'
+                          : isCurrent
                           ? 'text-blue-600 font-extrabold'
                           : isPast
                           ? 'text-slate-800'
                           : 'text-slate-400'
                       }`}
                     >
-                      {step.title}
+                      {stepTitle}
                     </span>
                     <span className="text-[10px] text-slate-400 block whitespace-nowrap">
-                      {step.desc}
+                      {stepDesc}
                     </span>
                   </div>
                 </div>

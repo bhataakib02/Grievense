@@ -30,13 +30,13 @@ export function OfficerActionBar({ grievance, signer, userAddress, onActionSucce
   // 2: ASSIGNED -> startReview
   // 3: UNDER_REVIEW -> startInvestigation
   // 4: UNDER_INVESTIGATION -> submitResolution
-  // 10: REOPENED -> startInvestigation (or startReview)
+  // 10: REOPENED -> Awaiting Department Admin reassignment/triage
+  const isReopened = currentStatus === STATUSES.REOPENED;
   const canStartReview = currentStatus === STATUSES.ASSIGNED;
-  const canStartInvestigation =
-    currentStatus === STATUSES.UNDER_REVIEW || currentStatus === STATUSES.REOPENED;
+  const canStartInvestigation = currentStatus === STATUSES.UNDER_REVIEW;
   const canSubmitResolution = currentStatus === STATUSES.UNDER_INVESTIGATION;
 
-  if (!canStartReview && !canStartInvestigation && !canSubmitResolution) {
+  if (!canStartReview && !canStartInvestigation && !canSubmitResolution && !isReopened) {
     return null;
   }
 
@@ -131,6 +131,12 @@ export function OfficerActionBar({ grievance, signer, userAddress, onActionSucce
         {successMsg && (
           <Alert variant="success" title="Action Completed">
             {successMsg}
+          </Alert>
+        )}
+
+        {isReopened && (
+          <Alert variant="warning" title="Reopened Grievance Status">
+            Grievance reopened by citizen. Awaiting Department Admin assignment / triage before investigation can resume.
           </Alert>
         )}
 

@@ -456,8 +456,18 @@ export function DepartmentAdminDashboard() {
     () => deptGrievances.filter((g) => g.status === STATUSES.REGISTERED),
     [deptGrievances]
   );
+  const reopenedGrievances = useMemo(
+    () => deptGrievances.filter((g) => g.status === STATUSES.REOPENED),
+    [deptGrievances]
+  );
   const pendingCount = useMemo(
-    () => deptGrievances.filter((g) => g.status === STATUSES.SUBMITTED || g.status === STATUSES.REGISTERED).length,
+    () =>
+      deptGrievances.filter(
+        (g) =>
+          g.status === STATUSES.SUBMITTED ||
+          g.status === STATUSES.REGISTERED ||
+          g.status === STATUSES.REOPENED
+      ).length,
     [deptGrievances]
   );
   const investigatingCount = useMemo(
@@ -500,8 +510,7 @@ export function DepartmentAdminDashboard() {
         (g) =>
           g.status === STATUSES.ASSIGNED ||
           g.status === STATUSES.UNDER_REVIEW ||
-          g.status === STATUSES.UNDER_INVESTIGATION ||
-          g.status === STATUSES.REOPENED
+          g.status === STATUSES.UNDER_INVESTIGATION
       ),
     [deptGrievances]
   );
@@ -1055,13 +1064,13 @@ export function DepartmentAdminDashboard() {
           >
             {loading ? (
               <div className="py-10 text-center text-xs text-slate-500">Loading triage cases...</div>
-            ) : submittedGrievances.length === 0 && registeredGrievances.length === 0 ? (
+            ) : submittedGrievances.length === 0 && registeredGrievances.length === 0 && reopenedGrievances.length === 0 ? (
               <div className="py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 No incoming grievances currently awaiting departmental triage.
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {[...submittedGrievances, ...registeredGrievances].map((g) => {
+                {[...submittedGrievances, ...registeredGrievances, ...reopenedGrievances].map((g) => {
                   const sMeta = STATUS_METADATA[g.status] || { label: 'Unknown', badgeVariant: 'default' };
                   const pMeta = PRIORITY_METADATA[g.priority] || { label: 'Medium', badgeVariant: 'default' };
 
@@ -1081,12 +1090,20 @@ export function DepartmentAdminDashboard() {
                           <Badge variant={pMeta.badgeVariant} className="text-[10px]">
                             {pMeta.label} Priority
                           </Badge>
+                          {g.reopenCount > 0 && (
+                            <Badge variant="warning" className="text-[10px]">
+                              Reopened #{g.reopenCount}
+                            </Badge>
+                          )}
                         </div>
                         <h4 className="text-sm font-bold text-slate-900">
                           {g.title}
                         </h4>
                         <div className="text-[11px] text-slate-400 font-mono">
                           Submitted: {formatTimestamp(g.createdAt)} | Citizen: {shortenAddress(g.citizen, 5)}
+                          {g.assignedOfficer && g.assignedOfficer !== '0x0000000000000000000000000000000000000000' && (
+                            <span> | Prior Officer: {shortenAddress(g.assignedOfficer, 5)}</span>
+                          )}
                         </div>
                       </div>
 
@@ -1107,12 +1124,20 @@ export function DepartmentAdminDashboard() {
                           variant="primary"
                           onClick={() => {
                             setAssignTargetGrievance(g);
-                            setSelectedOfficerForAssign(deptOfficers[0] || '');
+                            setSelectedOfficerForAssign(
+                              g.assignedOfficer && g.assignedOfficer !== '0x0000000000000000000000000000000000000000'
+                                ? g.assignedOfficer
+                                : deptOfficers[0] || ''
+                            );
                           }}
                           disabled={deptOfficers.length === 0}
                           className="font-bold"
                         >
-                          {g.status === STATUSES.SUBMITTED ? '2. Assign Officer' : 'Assign Officer'}
+                          {g.status === STATUSES.SUBMITTED
+                            ? '2. Assign Officer'
+                            : g.status === STATUSES.REOPENED
+                            ? 'Assign / Reassign Officer'
+                            : 'Assign Officer'}
                         </Button>
                         <Button
                           size="xs"
@@ -1121,16 +1146,18 @@ export function DepartmentAdminDashboard() {
                         >
                           View Details
                         </Button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRejectTargetGrievance(g);
-                            setRejectReason('');
-                          }}
-                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 cursor-pointer"
-                        >
-                          Reject
-                        </button>
+                        {(g.status === STATUSES.SUBMITTED || g.status === STATUSES.REGISTERED) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRejectTargetGrievance(g);
+                              setRejectReason('');
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 cursor-pointer"
+                          >
+                            Reject
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

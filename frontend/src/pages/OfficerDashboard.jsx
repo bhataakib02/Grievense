@@ -124,8 +124,10 @@ export function OfficerDashboard() {
     const investigating = cases.filter(
       (c) =>
         c.status === STATUSES.UNDER_INVESTIGATION ||
-        c.status === STATUSES.REOPENED ||
         c.status === STATUSES.ESCALATED
+    ).length;
+    const reopened = cases.filter(
+      (c) => c.status === STATUSES.REOPENED
     ).length;
     const resolutionProposed = cases.filter(
       (c) =>
@@ -150,6 +152,7 @@ export function OfficerDashboard() {
       total,
       newReview,
       investigating,
+      reopened,
       resolutionProposed,
       resolved,
       closed,
@@ -165,9 +168,10 @@ export function OfficerDashboard() {
       } else if (activeFilter === 'investigating') {
         if (
           c.status !== STATUSES.UNDER_INVESTIGATION &&
-          c.status !== STATUSES.REOPENED &&
           c.status !== STATUSES.ESCALATED
         ) return false;
+      } else if (activeFilter === 'reopened') {
+        if (c.status !== STATUSES.REOPENED) return false;
       } else if (activeFilter === 'resolution') {
         if (c.status !== STATUSES.RESOLUTION_PROPOSED && c.status !== STATUSES.CITIZEN_REVIEW) return false;
       } else if (activeFilter === 'resolved') {
@@ -264,8 +268,8 @@ export function OfficerDashboard() {
           </div>
         </div>
 
-        {/* 7-Column Metric KPIs (Section 1) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-6 text-xs">
+        {/* 8-Column Metric KPIs (Section 1) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 pt-6 text-xs">
           <div
             onClick={() => setActiveFilter('all')}
             className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
@@ -305,6 +309,20 @@ export function OfficerDashboard() {
             <span className="text-slate-500 block font-medium">Investigating</span>
             <span className="text-xl font-extrabold text-blue-600 mt-1 block">
               {stats.investigating}
+            </span>
+          </div>
+
+          <div
+            onClick={() => setActiveFilter('reopened')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+              activeFilter === 'reopened'
+                ? 'bg-rose-50/70 border-rose-200 ring-2 ring-rose-100'
+                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="text-slate-500 block font-medium">Reopened</span>
+            <span className="text-xl font-extrabold text-rose-600 mt-1 block">
+              {stats.reopened}
             </span>
           </div>
 

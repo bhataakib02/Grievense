@@ -1,22 +1,7 @@
--- =====================================================================
--- BLOCKCHAIN-BASED PUBLIC GRIEVANCE TRACKING SYSTEM
--- OFF-CHAIN SUPABASE INDEX & EVENT CACHE SCHEMA (DEPLOYMENT-AWARE)
--- =====================================================================
---
--- STRICT ARCHITECTURAL PRINCIPLES:
--- 1. Ethereum Sepolia Solidity smart contracts are the SOLE AUTHORITATIVE
---    SOURCE OF TRUTH.
--- 2. This database serves purely as an OFF-CHAIN INDEX and cache for fast
---    read queries, analytics, event search, and dashboard filtering.
--- 3. Never allow Supabase values to override verified on-chain state.
--- 4. If any discrepancy exists between on-chain data and Supabase, the
---    blockchain state MUST always prevail and auto-heal the cache.
--- 5. Deployment-Aware Identity: IDs reset when contracts are redeployed.
---    All indexed entities use composite deployment identity:
---    (deployment_id, on_chain_id). Historical deployments are preserved.
--- =====================================================================
+-- Migration 001: Deployment-Aware Schema & Indexer Checkpoint
+-- Created: 2026-09-23
+-- Idempotent deployment-aware schema definition for Supabase PostgreSQL
 
--- 1. Deployments table: tracks contract addresses across deployment versions
 CREATE TABLE IF NOT EXISTS deployments (
     id SERIAL PRIMARY KEY,
     chain_id BIGINT NOT NULL DEFAULT 11155111,
@@ -33,7 +18,6 @@ CREATE TABLE IF NOT EXISTS deployments (
     CONSTRAINT uq_deployment_identity UNIQUE (chain_id, role_manager, department_manager, grievance_system, escalation_manager, audit_trail)
 );
 
--- 2. Departments table: index of registered on-chain departments
 CREATE TABLE IF NOT EXISTS departments (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -50,7 +34,6 @@ CREATE TABLE IF NOT EXISTS departments (
     CONSTRAINT uq_department_deployment UNIQUE (deployment_id, department_id)
 );
 
--- 3. Categories table: index of department-scoped grievance categories
 CREATE TABLE IF NOT EXISTS categories (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -66,7 +49,6 @@ CREATE TABLE IF NOT EXISTS categories (
     CONSTRAINT uq_category_deployment UNIQUE (deployment_id, category_id)
 );
 
--- 4. Officers table: roster of verified department officers
 CREATE TABLE IF NOT EXISTS officers (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -80,7 +62,6 @@ CREATE TABLE IF NOT EXISTS officers (
     CONSTRAINT uq_officer_dept_deployment UNIQUE (deployment_id, department_id, officer_address)
 );
 
--- 5. Grievances table: indexed on-chain grievance records
 CREATE TABLE IF NOT EXISTS grievances (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -111,7 +92,6 @@ CREATE TABLE IF NOT EXISTS grievances (
     CONSTRAINT uq_grievance_deployment UNIQUE (deployment_id, grievance_id)
 );
 
--- 6. Grievance Events: log of lifecycle mutations emitted on-chain
 CREATE TABLE IF NOT EXISTS grievance_events (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -131,7 +111,6 @@ CREATE TABLE IF NOT EXISTS grievance_events (
     CONSTRAINT uq_grievance_event UNIQUE (transaction_hash, log_index)
 );
 
--- 7. Audit Events: forensic entries indexed from AuditTrail.sol
 CREATE TABLE IF NOT EXISTS audit_events (
     id BIGSERIAL PRIMARY KEY,
     deployment_id INT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
@@ -151,7 +130,6 @@ CREATE TABLE IF NOT EXISTS audit_events (
     CONSTRAINT uq_audit_event_deployment UNIQUE (deployment_id, audit_id)
 );
 
--- 8. Indexer Checkpoint State: tracks progress per contract
 CREATE TABLE IF NOT EXISTS indexer_state (
     id SERIAL PRIMARY KEY,
     chain_id BIGINT NOT NULL DEFAULT 11155111,
@@ -164,7 +142,6 @@ CREATE TABLE IF NOT EXISTS indexer_state (
     CONSTRAINT uq_indexer_checkpoint UNIQUE (deployment_id, contract_address)
 );
 
--- 9. IPFS Objects: index of off-chain documents pinned to IPFS
 CREATE TABLE IF NOT EXISTS ipfs_objects (
     cid VARCHAR(255) PRIMARY KEY,
     content_hash VARCHAR(66) NOT NULL,
@@ -177,7 +154,6 @@ CREATE TABLE IF NOT EXISTS ipfs_objects (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. Transactions: log of transactions interacting with system contracts
 CREATE TABLE IF NOT EXISTS transactions (
     tx_hash VARCHAR(66) PRIMARY KEY,
     deployment_id INT REFERENCES deployments(id) ON DELETE SET NULL,
@@ -207,55 +183,3 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_target ON audit_events(deployment_id
 CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(deployment_id, actor_address);
 CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(from_address);
 CREATE INDEX IF NOT EXISTS idx_transactions_block ON transactions(block_number);
-
--- =====================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
--- =====================================================================
--- Read access: Public (allows fast frontend queries for public data)
--- Write access: Denied to public/anon (only backend service role can mutate index)
-
-ALTER TABLE deployments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE officers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE grievances ENABLE ROW LEVEL SECURITY;
-ALTER TABLE grievance_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE indexer_state ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ipfs_objects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-
-DO $$
-BEGIN
-    -- Public read policies
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read deployments') THEN
-        CREATE POLICY "Allow public read deployments" ON deployments FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read departments') THEN
-        CREATE POLICY "Allow public read departments" ON departments FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read categories') THEN
-        CREATE POLICY "Allow public read categories" ON categories FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read officers') THEN
-        CREATE POLICY "Allow public read officers" ON officers FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read grievances') THEN
-        CREATE POLICY "Allow public read grievances" ON grievances FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read grievance_events') THEN
-        CREATE POLICY "Allow public read grievance_events" ON grievance_events FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read audit_events') THEN
-        CREATE POLICY "Allow public read audit_events" ON audit_events FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read indexer_state') THEN
-        CREATE POLICY "Allow public read indexer_state" ON indexer_state FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read ipfs_objects') THEN
-        CREATE POLICY "Allow public read ipfs_objects" ON ipfs_objects FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read transactions') THEN
-        CREATE POLICY "Allow public read transactions" ON transactions FOR SELECT USING (true);
-    END IF;
-END $$;
