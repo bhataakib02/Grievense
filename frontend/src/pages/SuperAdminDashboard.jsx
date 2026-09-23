@@ -308,18 +308,42 @@ export function SuperAdminDashboard() {
     if (!runner || !isSuperAdmin) return;
     try {
       setLoading(true);
+      setError(null);
 
-      // 1. Fetch departments, grievances, categories, SLAs, admin count, and eligible department admins concurrently
-      const [deptsRaw, grievancesRaw, catsRaw, slaRaw, adminCountRaw, auditCountRaw, eligibleAdminsRaw] =
-        await Promise.all([
-          fetchAllDepartments(runner).catch(() => []),
-          fetchAllGrievances(runner, 200).catch(() => []),
-          fetchAllCategories(runner).catch(() => []),
-          fetchSlaDurations(runner).catch(() => []),
-          fetchSuperAdminCount(runner).catch(() => 1),
-          fetchAuditCount(runner).catch(() => 0),
-          fetchEligibleDepartmentAdmins(runner).catch(() => []),
-        ]);
+      // 1. Fetch departments, grievances, categories, SLAs, admin count, and eligible department admins
+      let deptsRaw = [];
+      let grievancesRaw = [];
+      let catsRaw = [];
+      let slaRaw = [];
+      let adminCountRaw = 1;
+      let auditCountRaw = 0;
+      let eligibleAdminsRaw = [];
+
+      try {
+        deptsRaw = await fetchAllDepartments(runner);
+      } catch (deptErr) {
+        console.error('Failed to fetch departments from Sepolia:', deptErr);
+        setError('Unable to load current Sepolia blockchain state: ' + (deptErr?.shortMessage || deptErr?.message || 'DepartmentManager query failed.'));
+      }
+
+      try {
+        grievancesRaw = await fetchAllGrievances(runner, 200);
+      } catch (gErr) {
+        console.warn('Grievance fetch warning:', gErr);
+      }
+
+      try {
+        catsRaw = await fetchAllCategories(runner);
+      } catch (cErr) {
+        console.warn('Categories fetch warning:', cErr);
+      }
+
+      [slaRaw, adminCountRaw, auditCountRaw, eligibleAdminsRaw] = await Promise.all([
+        fetchSlaDurations(runner).catch(() => []),
+        fetchSuperAdminCount(runner).catch(() => 1),
+        fetchAuditCount(runner).catch(() => 0),
+        fetchEligibleDepartmentAdmins(runner).catch(() => []),
+      ]);
 
       setAllGrievances(grievancesRaw);
       setCategories(catsRaw);
@@ -409,6 +433,7 @@ export function SuperAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to load global governance data:', err);
+      setError('Unable to load current Sepolia blockchain state: ' + (err?.shortMessage || err?.message || 'Check RPC connection.'));
     } finally {
       setLoading(false);
     }

@@ -170,7 +170,7 @@ export function DepartmentAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to load departments:', err);
-      setError('Could not load department list from blockchain.');
+      setError('Unable to load current Sepolia blockchain state: ' + (err?.shortMessage || err?.message || 'Check RPC connection.'));
     } finally {
       setLoading(false);
     }
@@ -218,6 +218,7 @@ export function DepartmentAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to load department details:', err);
+      setError('Unable to load current Sepolia blockchain state: ' + (err?.shortMessage || err?.message || 'Department details query failed.'));
     } finally {
       setLoading(false);
     }

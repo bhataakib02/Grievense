@@ -71,7 +71,7 @@ export function OfficerDashboard() {
       setCategories(activeCats);
     } catch (err) {
       console.error('Failed to load officer cases from smart contract:', err);
-      setError(err?.message || 'Could not retrieve assigned cases from the smart contract.');
+      setError('Unable to load current Sepolia blockchain state: ' + (err?.shortMessage || err?.message || 'Could not retrieve assigned cases from the smart contract.'));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

@@ -1,0 +1,15 @@
+{
+  "chainId": 11155111,
+  "network": "sepolia",
+  "deploymentVersion": "1.0.0",
+  "deploymentTimestamp": "2026-09-20T10:00:00.000Z",
+  "contracts": {
+    "roleManager": "0xD3f4d5659dd2cA9634FC107b88B59F3A8b6628f8",
+    "departmentManager": "0x0000000000000000000000000000000000000000",
+    "grievanceSystem": "0x0000000000000000000000000000000000000000",
+    "escalationManager": "0x0000000000000000000000000000000000000000",
+    "auditTrail": "0xa948Ab51618C8Dc253Df3d92DB330965E38dDA88"
+  },
+  "status": "deprecated",
+  "notes": "Historical deployment v1.0.0 on Ethereum Sepolia."
+}

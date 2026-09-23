@@ -3,6 +3,7 @@ import {
   getGrievanceSystemContract,
   getDepartmentManagerContract,
   getAuditTrailContract,
+  CONTRACT_ABIS,
 } from './blockchain.js';
 import { isContractConfigured } from '../contracts/addresses.js';
 import { fetchCategorySafe } from './departmentService.js';
@@ -110,88 +111,135 @@ export function parseContractError(err, contract = null) {
   // Check direct revert name if already parsed by ethers v6
   let customErrorName = err?.revert?.name || null;
 
-  // Try extracting hex data from error payload and parsing with contract interface
-  if (!customErrorName && contract?.interface) {
+  // Try extracting hex data from error payload and parsing with contract interface or all known ABIs
+  if (!customErrorName) {
     const rawData =
       err?.data ||
       err?.info?.error?.data ||
       err?.error?.data ||
       err?.payload?.params?.[0]?.data;
     if (rawData && typeof rawData === 'string' && rawData.startsWith('0x')) {
-      try {
-        const parsed = contract.interface.parseError(rawData);
-        if (parsed) customErrorName = parsed.name;
-      } catch {}
+      if (contract?.interface) {
+        try {
+          const parsed = contract.interface.parseError(rawData);
+          if (parsed) customErrorName = parsed.name;
+        } catch {}
+      }
+      if (!customErrorName && CONTRACT_ABIS) {
+        for (const abi of Object.values(CONTRACT_ABIS)) {
+          try {
+            const iface = new ethers.Interface(abi);
+            const parsed = iface.parseError(rawData);
+            if (parsed) {
+              customErrorName = parsed.name;
+              break;
+            }
+          } catch {}
+        }
+      }
     }
   }
 
-  const errString = `${err?.reason || ''} ${err?.message || ''} ${err?.shortMessage || ''} ${customErrorName || ''}`;
+  const errString = `${err?.reason || ''} ${err?.message || ''} ${err?.shortMessage || ''} ${customErrorName || ''}`.toLowerCase();
 
-  if (customErrorName === 'CategoryNotInDepartment' || errString.includes('CategoryNotInDepartment')) {
+  if (customErrorName === 'CategoryNotInDepartment' || errString.includes('categorynotindepartment')) {
     return 'The selected category does not belong to the selected department.';
   }
-  if (customErrorName === 'NotADepartmentAdmin' || errString.includes('NotADepartmentAdmin')) {
+  if (customErrorName === 'NotADepartmentAdmin' || errString.includes('notadepartmentadmin')) {
     return 'This wallet does not hold the Department Admin role for this department.';
   }
-  if (customErrorName === 'CannotReassignToSameOfficer' || errString.includes('CannotReassignToSameOfficer')) {
+  if (customErrorName === 'CannotReassignToSameOfficer' || errString.includes('cannotreassigntosameofficer')) {
     return 'Cannot reassign to the same officer who is already assigned.';
   }
-  if (customErrorName === 'EvidenceAlreadyRevoked' || errString.includes('EvidenceAlreadyRevoked')) {
+  if (customErrorName === 'EvidenceAlreadyRevoked' || errString.includes('evidencealreadyrevoked')) {
     return 'This evidence item has already been revoked.';
   }
-  if (customErrorName === 'InvalidStatusTransition' || errString.includes('InvalidStatusTransition')) {
+  if (customErrorName === 'InvalidStatusTransition' || errString.includes('invalidstatustransition')) {
     return 'Invalid status transition: The grievance is not in the required state for this action.';
   }
-  if (customErrorName === 'NotAssignedOfficer' || errString.includes('NotAssignedOfficer')) {
+  if (customErrorName === 'NotAssignedOfficer' || errString.includes('notassignedofficer')) {
     return 'You are not the assigned officer for this grievance.';
   }
-  if (customErrorName === 'NotGrievanceOwner' || errString.includes('NotGrievanceOwner')) {
+  if (customErrorName === 'NotGrievanceOwner' || errString.includes('notgrievanceowner')) {
     return 'You are not the citizen who filed this grievance.';
   }
-  if (customErrorName === 'GrievanceAlreadyAssigned' || errString.includes('GrievanceAlreadyAssigned')) {
+  if (customErrorName === 'GrievanceAlreadyAssigned' || errString.includes('grievancealreadyassigned')) {
     return 'This grievance is already assigned to an officer.';
   }
-  if (customErrorName === 'OfficerNotInDepartment' || errString.includes('OfficerNotInDepartment')) {
+  if (customErrorName === 'OfficerNotInDepartment' || errString.includes('officernotindepartment')) {
     return 'The selected officer is not a member of this grievance\'s department.';
   }
-  if (customErrorName === 'ResolutionAlreadyPending' || errString.includes('ResolutionAlreadyPending')) {
+  if (customErrorName === 'ResolutionAlreadyPending' || errString.includes('resolutionalreadypending')) {
     return 'A resolution is already pending review for this grievance.';
   }
-  if (customErrorName === 'ResolutionNotFound' || errString.includes('ResolutionNotFound')) {
+  if (customErrorName === 'ResolutionNotFound' || errString.includes('resolutionnotfound')) {
     return 'No pending resolution found for this grievance.';
   }
-  if (customErrorName === 'SLANotBreached' || errString.includes('SLANotBreached')) {
+  if (customErrorName === 'SLANotBreached' || errString.includes('slanotbreached')) {
     return 'The SLA deadline has not been breached yet.';
   }
-  if (customErrorName === 'AlreadyEscalated' || errString.includes('AlreadyEscalated')) {
+  if (customErrorName === 'AlreadyEscalated' || errString.includes('alreadyescalated')) {
     return 'This grievance has already been escalated.';
   }
-  if (customErrorName === 'DepartmentNotFound' || errString.includes('DepartmentNotFound')) {
+  if (customErrorName === 'DepartmentNotFound' || errString.includes('departmentnotfound')) {
     return 'The selected department was not found on the blockchain.';
   }
-  if (customErrorName === 'DepartmentNotActive' || errString.includes('DepartmentNotActive')) {
+  if (customErrorName === 'DepartmentNotActive' || errString.includes('departmentnotactive')) {
     return 'The selected department is currently deactivated and cannot accept new grievances.';
   }
-  if (customErrorName === 'CategoryNotFound' || errString.includes('CategoryNotFound')) {
+  if (customErrorName === 'CategoryNotFound' || errString.includes('categorynotfound')) {
     return 'The selected grievance category was not found on the blockchain.';
   }
-  if (customErrorName === 'CategoryNotActive' || errString.includes('CategoryNotActive')) {
+  if (customErrorName === 'CategoryNotActive' || errString.includes('categorynotactive')) {
     return 'The selected category is currently deactivated.';
   }
-  if (customErrorName === 'InvalidTitle' || errString.includes('InvalidTitle')) {
+  if (customErrorName === 'InvalidTitle' || errString.includes('invalidtitle')) {
     return 'Title is invalid. It must be between 1 and 200 UTF-8 bytes.';
   }
-  if (customErrorName === 'EmptyIPFSCid' || errString.includes('EmptyIPFSCid')) {
+  if (customErrorName === 'EmptyIPFSCid' || errString.includes('emptyipfscid')) {
     return 'IPFS CID is required and cannot be empty.';
   }
-  if (customErrorName === 'EmptyContentHash' || errString.includes('EmptyContentHash')) {
+  if (customErrorName === 'EmptyContentHash' || errString.includes('emptycontenthash')) {
     return 'Description content hash is required.';
   }
-  if (customErrorName === 'AlreadyRegistered' || errString.includes('AlreadyRegistered')) {
+  if (customErrorName === 'AlreadyRegistered' || errString.includes('alreadyregistered')) {
     return 'Wallet is already registered in RoleManager.';
   }
-  if (customErrorName === 'Unauthorized' || errString.includes('Unauthorized') || errString.includes('isCitizen')) {
+  if (customErrorName === 'WriterNotAuthorized' || errString.includes('writernotauthorized')) {
+    return 'Audit Trail Authorization Error: The caller contract is not authorized to write to AuditTrail.';
+  }
+  if (
+    customErrorName === 'ZeroAddressNotAllowed' ||
+    customErrorName === 'InvalidAddress' ||
+    errString.includes('zeroaddressnotallowed') ||
+    errString.includes('invalid address') ||
+    errString.includes('bad address checksum')
+  ) {
+    return 'Invalid Address: Zero address or malformed Ethereum address provided.';
+  }
+  if (
+    customErrorName === 'ValueOutOfRange' ||
+    customErrorName === 'InvalidPriority' ||
+    errString.includes('valueoutofrange') ||
+    errString.includes('invalidpriority')
+  ) {
+    return 'Invalid parameter value or priority tier out of range.';
+  }
+  if (errString.includes('network') || errString.includes('chainid') || err.code === 'NETWORK_ERROR') {
+    return 'Network Mismatch: Please ensure your MetaMask is connected to Ethereum Sepolia (Chain ID: 11155111).';
+  }
+  if (customErrorName === 'Unauthorized' || errString.includes('unauthorized') || errString.includes('iscitizen')) {
     return 'Unauthorized: Your wallet lacks the required permissions for this action.';
+  }
+
+  // Intercept generic "missing revert data" / "execution reverted (no data present)"
+  if (
+    errString.includes('no data present') ||
+    errString.includes('missing revert data') ||
+    errString.includes('require(false)') ||
+    (err.code === 'CALL_EXCEPTION' && (!err.data || err.data === '0x'))
+  ) {
+    return 'Execution reverted with no data on-chain. This indicates an internal contract call failure (such as an immutable contract reference pointing to an incorrect contract address, an unhandled require(false), or a call to an unrecognized function selector).';
   }
 
   return err.shortMessage || err.message || 'Transaction failed on the blockchain.';
