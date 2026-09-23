@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "chainId": 11155111,
+    "network": "sepolia",
+    "exportedAt": "2026-09-23T08:50:59.764Z",
+    "blockNumber": 11763831,
+    "blockTimestamp": 1790153448
+  },
+  "contracts": {
+    "roleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "departmentManager": "0x653e0F0D8C7dD9C26eA02EB5cac513A9556707Bd",
+    "grievanceSystem": "0x0c6374763bf25875E503B809e559bB37A428Ff04",
+    "escalationManager": "0xCdC42E0c21b25D6a9accE526D05075316dcBa563",
+    "auditTrail": "0x7ae2779953D1947D5B974dD07b1fAE241A5e744A"
+  },
+  "bytecodes": {
+    "roleManager": {
+      "address": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+      "hasCode": true,
+      "lengthBytes": 8780
+    },
+    "departmentManager": {
+      "address": "0x653e0F0D8C7dD9C26eA02EB5cac513A9556707Bd",
+      "hasCode": true,
+      "lengthBytes": 22830
+    },
+    "grievanceSystem": {
+      "address": "0x0c6374763bf25875E503B809e559bB37A428Ff04",
+      "hasCode": true,
+      "lengthBytes": 21057
+    },
+    "escalationManager": {
+      "address": "0xCdC42E0c21b25D6a9accE526D05075316dcBa563",
+      "hasCode": true,
+      "lengthBytes": 7764
+    },
+    "auditTrail": {
+      "address": "0x7ae2779953D1947D5B974dD07b1fAE241A5e744A",
+      "hasCode": true,
+      "lengthBytes": 3276
+    }
+  },
+  "wiring": {
+    "deptRoleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "deptAuditTrail": "0x0000000000000000000000000000000000000000",
+    "grievRoleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "grievDeptManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "grievAuditTrail": "0x0000000000000000000000000000000000000000",
+    "grievEscManager": "0x0000000000000000000000000000000000000000",
+    "escRoleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "escDeptManager": "0x653e0F0D8C7dD9C26eA02EB5cac513A9556707Bd",
+    "escGrievSystem": "0x0c6374763bf25875E503B809e559bB37A428Ff04",
+    "escAuditTrail": "0x0000000000000000000000000000000000000000",
+    "auditRoleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64"
+  },
+  "departments": [
+    {
+      "id": 1,
+      "name": "HealthCare",
+      "description": "HealthCare",
+      "admin": "0xeae67cFF85206Bc3EbEf794059b6Aa2D6ce62C3b",
+      "isActive": true,
+      "officers": [
+        "0xCc3DA9625C1E595628646E53f5eEc10c592A1171"
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "Water",
+      "description": "nnhgnmhkjjgjhghjgjghjc",
+      "departmentId": 1,
+      "isActive": true,
+      "exists": true
+    }
+  ],
+  "officers": [],
+  "grievances": [],
+  "auditEntries": []
+}

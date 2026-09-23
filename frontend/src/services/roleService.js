@@ -110,6 +110,13 @@ export async function fetchUserRoles(runner, accountAddress) {
     };
   }
 
+  let queryAddress = accountAddress;
+  try {
+    queryAddress = ethers.getAddress(accountAddress.toLowerCase());
+  } catch {
+    // Keep original if not standard
+  }
+
   const roleManager = getRoleManagerContract(runner);
 
   let isCitizen = false;
@@ -119,7 +126,7 @@ export async function fetchUserRoles(runner, accountAddress) {
 
   // Try the gas-free convenience function getActiveRoles(account)
   try {
-    const [cit, off, dept, sup] = await roleManager.getActiveRoles(accountAddress);
+    const [cit, off, dept, sup] = await roleManager.getActiveRoles(queryAddress);
     isCitizen = Boolean(cit);
     isOfficer = Boolean(off);
     isDeptAdmin = Boolean(dept);
@@ -129,10 +136,10 @@ export async function fetchUserRoles(runner, accountAddress) {
     try {
       const constants = await fetchRoleConstants(roleManager);
       const [cit, off, dept, sup] = await Promise.all([
-        roleManager.hasRole(constants.CITIZEN_ROLE, accountAddress),
-        roleManager.hasRole(constants.OFFICER_ROLE, accountAddress),
-        roleManager.hasRole(constants.DEPARTMENT_ADMIN_ROLE, accountAddress),
-        roleManager.hasRole(constants.SUPER_ADMIN_ROLE, accountAddress),
+        roleManager.hasRole(constants.CITIZEN_ROLE, queryAddress),
+        roleManager.hasRole(constants.OFFICER_ROLE, queryAddress),
+        roleManager.hasRole(constants.DEPARTMENT_ADMIN_ROLE, queryAddress),
+        roleManager.hasRole(constants.SUPER_ADMIN_ROLE, queryAddress),
       ]);
       isCitizen = Boolean(cit);
       isOfficer = Boolean(off);
@@ -160,7 +167,7 @@ export async function fetchUserRoles(runner, accountAddress) {
   let superAdminCount = 0;
 
   try {
-    const profile = await roleManager.getUserProfile(accountAddress);
+    const profile = await roleManager.getUserProfile(queryAddress);
     isRegistered = Boolean(profile.isRegistered);
     registeredAt = profile.registeredAt ? Number(profile.registeredAt) : null;
   } catch (err) {

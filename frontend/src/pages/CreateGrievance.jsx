@@ -24,17 +24,46 @@ import {
 } from '../services/ipfs';
 import { GrievanceSubmissionSuccess } from './GrievanceSubmissionSuccess';
 
+const DRAFT_STORAGE_KEY = 'grievance-draft-v1';
+
+function getInitialDraft() {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(DRAFT_STORAGE_KEY) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        title: typeof parsed.title === 'string' ? parsed.title : '',
+        description: typeof parsed.description === 'string' ? parsed.description : '',
+        departmentId: parsed.departmentId !== undefined ? String(parsed.departmentId) : '',
+        categoryId: parsed.categoryId !== undefined ? String(parsed.categoryId) : '',
+        priority: typeof parsed.priority === 'number' ? parsed.priority : PRIORITIES.MEDIUM,
+      };
+    }
+  } catch (e) {
+    console.warn('[DraftPersistence] Failed to parse draft, resetting:', e);
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch (_) {}
+  }
+  return null;
+}
+
 export function CreateGrievance() {
   const { address, signer, provider, isConnected, chainId, networkName } = useWallet();
   const { isRegistered, registerCitizen, refreshRoles } = useRoles();
   const { navigate } = useRouter();
 
+  // Initial Draft Restoration
+  const initialDraft = useMemo(() => getInitialDraft(), []);
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(Boolean(initialDraft && (initialDraft.title || initialDraft.description)));
+
   // Form State
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [priority, setPriority] = useState(PRIORITIES.MEDIUM);
+  const [title, setTitle] = useState(initialDraft?.title || '');
+  const [description, setDescription] = useState(initialDraft?.description || '');
+  const [departmentId, setDepartmentId] = useState(initialDraft?.departmentId || '');
+  const [categoryId, setCategoryId] = useState(initialDraft?.categoryId || '');
+  const [priority, setPriority] = useState(initialDraft?.priority ?? PRIORITIES.MEDIUM);
 
   // Evidence state
   const [_evidenceFile, setEvidenceFile] = useState(null);
@@ -88,10 +117,10 @@ export function CreateGrievance() {
           setCategories(cats);
 
           if (depts.length > 0) {
-            setDepartmentId(String(depts[0].id));
+            setDepartmentId((prev) => prev || String(depts[0].id));
           }
           if (cats.length > 0) {
-            setCategoryId(String(cats[0].id));
+            setCategoryId((prev) => prev || String(cats[0].id));
           }
         }
       } catch (err) {
@@ -112,6 +141,38 @@ export function CreateGrievance() {
       active = false;
     };
   }, [provider, signer]);
+
+  // Safe draft persistence: auto-save unfinished form data to localStorage
+  useEffect(() => {
+    if (txState === 'SUCCESS') return;
+
+    try {
+      const hasContent = Boolean(title.trim() || description.trim());
+      if (hasContent) {
+        const draftPayload = {
+          title,
+          description,
+          departmentId,
+          categoryId,
+          priority,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+      }
+    } catch (err) {
+      console.warn('[DraftPersistence] Failed to auto-save draft:', err);
+    }
+  }, [title, description, departmentId, categoryId, priority, txState]);
+
+  // Discard draft and reset form
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch (_) {}
+    setTitle('');
+    setDescription('');
+    setHasRestoredDraft(false);
+  };
 
   // Filter active categories strictly by selected department (or global categories if departmentId === 0)
   const availableCategories = useMemo(() => {
@@ -286,6 +347,9 @@ export function CreateGrievance() {
       );
 
       // 7. State: SUCCESS
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch (_) {}
       setTxState('SUCCESS');
       setSubmissionResult({
         grievanceId: result.grievanceId,
@@ -359,6 +423,26 @@ export function CreateGrievance() {
           </div>
         </div>
       </div>
+
+      {/* Recovered Draft Notice */}
+      {hasRestoredDraft && (title || description) && txState === 'IDLE' && (
+        <div className="bg-blue-50/80 border border-blue-200/90 text-blue-900 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="p-1 rounded-md bg-blue-200/70 text-blue-800 text-sm">📝</span>
+            <div>
+              <span className="font-bold text-blue-950">Unfinished Draft Recovered:</span>{' '}
+              <span>Your previous grievance inputs have been restored from local storage.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDiscardDraft}
+            className="text-xs text-blue-700 hover:text-red-600 font-bold underline transition self-end sm:self-auto shrink-0"
+          >
+            Discard Draft
+          </button>
+        </div>
+      )}
 
       {/* Contract Not Deployed Alert */}
       {!isContractConfigured('GrievanceSystem') && (
@@ -462,7 +546,7 @@ export function CreateGrievance() {
                 </select>
               ) : (
                 <div className="text-xs text-rose-600 font-semibold py-2">
-                  No active departments found.
+                  {errorMessage ? 'Unable to load departments from Sepolia.' : 'No active departments registered on this deployment.'}
                 </div>
               )}
             </div>

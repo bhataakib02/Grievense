@@ -28,7 +28,8 @@ export function CitizenDashboard() {
   const [myGrievances, setMyGrievances] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [loadingGrievances, setLoadingGrievances] = useState(false);
+  const [loadingGrievances, setLoadingGrievances] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentTime] = useState(() => Math.floor(Date.now() / 1000));
@@ -39,16 +40,20 @@ export function CitizenDashboard() {
     setDepartments([]);
     setCategories([]);
     setNotice(null);
+    setLoadError(null);
+    setLoadingGrievances(true);
   }, [address, chainId]);
 
   const loadData = useCallback(async () => {
     const runner = provider || signer;
     if (!runner || !address) {
       setMyGrievances([]);
+      setLoadingGrievances(false);
       return;
     }
 
     setLoadingGrievances(true);
+    setLoadError(null);
     try {
       const [list, depts, cats] = await Promise.all([
         fetchCitizenGrievances(runner, address),
@@ -60,6 +65,7 @@ export function CitizenDashboard() {
       setCategories(cats);
     } catch (err) {
       console.warn('Could not load citizen grievances:', err);
+      setLoadError('Unable to load current Sepolia blockchain state. ' + (err?.shortMessage || err?.message || 'Check your RPC connection.'));
     } finally {
       setLoadingGrievances(false);
     }
@@ -183,6 +189,13 @@ export function CitizenDashboard() {
     });
   }, [myGrievances, statusFilter, searchQuery]);
 
+  // Safe metric display helper avoiding false zeros during loading/error
+  const displayVal = (val) => {
+    if (loadingGrievances) return <span className="inline-block w-4 h-4 rounded bg-slate-200 animate-pulse" />;
+    if (loadError) return <span className="text-slate-400">--</span>;
+    return val;
+  };
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
       {/* Registration / Action Notification */}
@@ -193,6 +206,18 @@ export function CitizenDashboard() {
           onClose={() => setNotice(null)}
         >
           {notice.message}
+        </Alert>
+      )}
+
+      {/* Sepolia Read Error Alert */}
+      {loadError && (
+        <Alert variant="danger" title="Sepolia Read Notice" onClose={() => setLoadError(null)}>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <span>{loadError}</span>
+            <Button size="xs" variant="secondary" onClick={loadData}>
+              Retry Query
+            </Button>
+          </div>
         </Alert>
       )}
 
@@ -287,7 +312,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Total</span>
             <span className="text-lg font-extrabold text-slate-900 mt-1 block">
-              {stats.total}
+              {displayVal(stats.total)}
             </span>
           </div>
 
@@ -301,7 +326,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Pending</span>
             <span className="text-lg font-extrabold text-amber-600 mt-1 block">
-              {stats.pending}
+              {displayVal(stats.pending)}
             </span>
           </div>
 
@@ -315,7 +340,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Review</span>
             <span className="text-lg font-extrabold text-amber-700 mt-1 block">
-              {stats.underReview}
+              {displayVal(stats.underReview)}
             </span>
           </div>
 
@@ -329,7 +354,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Investigating</span>
             <span className="text-lg font-extrabold text-blue-600 mt-1 block">
-              {stats.investigating}
+              {displayVal(stats.investigating)}
             </span>
           </div>
 
@@ -343,7 +368,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Resolution</span>
             <span className="text-lg font-extrabold text-purple-600 mt-1 block">
-              {stats.resolutionProposed}
+              {displayVal(stats.resolutionProposed)}
             </span>
           </div>
 
@@ -357,7 +382,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Resolved</span>
             <span className="text-lg font-extrabold text-emerald-600 mt-1 block">
-              {stats.resolved}
+              {displayVal(stats.resolved)}
             </span>
           </div>
 
@@ -371,7 +396,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Rejected</span>
             <span className="text-lg font-extrabold text-rose-600 mt-1 block">
-              {stats.rejected}
+              {displayVal(stats.rejected)}
             </span>
           </div>
 
@@ -385,7 +410,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Reopened</span>
             <span className="text-lg font-extrabold text-orange-600 mt-1 block">
-              {stats.reopened}
+              {displayVal(stats.reopened)}
             </span>
           </div>
 
@@ -399,7 +424,7 @@ export function CitizenDashboard() {
           >
             <span className="text-slate-500 block font-medium truncate">Closed</span>
             <span className="text-lg font-extrabold text-slate-700 mt-1 block">
-              {stats.closed}
+              {displayVal(stats.closed)}
             </span>
           </div>
         </div>
@@ -539,14 +564,32 @@ export function CitizenDashboard() {
                 </tbody>
               </table>
             </div>
+          ) : loadError ? (
+            <div className="text-center py-12 px-4 space-y-3 bg-rose-50/60 rounded-2xl border border-rose-200">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl mx-auto">
+                ⚠️
+              </div>
+              <h4 className="text-sm font-bold text-rose-900">Unable to load current Sepolia blockchain state</h4>
+              <p className="text-xs text-rose-700 max-w-md mx-auto leading-relaxed">
+                {loadError}
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={loadData}
+                className="mt-2 text-xs font-bold"
+              >
+                Retry Query
+              </Button>
+            </div>
           ) : (
             <div className="text-center py-12 px-4 space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl mx-auto">
                 📋
               </div>
-              <h4 className="text-sm font-bold text-slate-700">No Grievances Found</h4>
+              <h4 className="text-sm font-bold text-slate-700">No Grievances Registered</h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                No grievances matched the current filter. Create a new grievance to initiate a tamper-proof on-chain record.
+                No grievances registered on this deployment for your connected wallet. Create a new grievance to initiate a tamper-proof on-chain record.
               </p>
               <Button
                 size="sm"

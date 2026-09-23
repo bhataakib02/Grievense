@@ -1,5 +1,5 @@
 import { getDepartmentManagerContract, getRoleManagerContract } from './blockchain.js';
-import { isContractConfigured } from '../contracts/addresses.js';
+import { isContractConfigured, DEPARTMENT_MANAGER_ADDRESS } from '../contracts/addresses.js';
 import { ethers } from 'ethers';
 
 /**
@@ -89,7 +89,7 @@ export function parseDepartmentError(err, contract = null) {
     if (actionTarget.includes('createCategory') || fullErrText.includes('createcategory')) {
       return (
         'Contract call failed ("missing revert data"). ' +
-        'Root Cause: The deployed DepartmentManager on Sepolia (0xAE3F7f5886BFFE5850F240fc3D79218423b0ee74) ' +
+        `Root Cause: The deployed DepartmentManager on Sepolia (${DEPARTMENT_MANAGER_ADDRESS || 'unconfigured'}) ` +
         'does not contain the department-scoped createCategory(uint256,string,string) function (selector 0x2850beda). ' +
         'DepartmentManager must be redeployed to Sepolia to enable Department Admin category creation.'
       );

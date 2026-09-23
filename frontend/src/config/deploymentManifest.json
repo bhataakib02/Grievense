@@ -1,0 +1,15 @@
+{
+  "chainId": 11155111,
+  "network": "sepolia",
+  "deploymentVersion": "2.0.0",
+  "deploymentTimestamp": "2026-09-23T06:00:00.000Z",
+  "contracts": {
+    "roleManager": "0x2e9F0205712d901E8034695c0825DDF8b4870e64",
+    "departmentManager": "0x653e0F0D8C7dD9C26eA02EB5cac513A9556707Bd",
+    "grievanceSystem": "0x0c6374763bf25875E503B809e559bB37A428Ff04",
+    "escalationManager": "0xCdC42E0c21b25D6a9accE526D05075316dcBa563",
+    "auditTrail": "0x7ae2779953D1947D5B974dD07b1fAE241A5e744A"
+  },
+  "status": "active_with_known_diagnosis",
+  "notes": "Current Sepolia deployment as specified in frontend/.env."
+}
